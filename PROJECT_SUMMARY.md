@@ -12,20 +12,29 @@ A fully functional **AI-powered academic forms assistant** that helps university
 - ✅ Modern chat-style interface
 - ✅ Real-time message display with user/agent distinction
 - ✅ Sidebar showing form progress
+- ✅ Form selector for choosing form types
+- ✅ Admin panel for form template management
 - ✅ Three action buttons: Start New Form, Download PDF, Generate Email
 - ✅ Responsive design (works on all devices)
 - ✅ Loading states and animations
 - ✅ Auto-scroll to latest messages
 - ✅ Keyboard shortcuts (Enter to send, Shift+Enter for new line)
+- ✅ Support for multiple form types and custom templates
 
 ### Backend (Node.js + Express + TypeScript)
 - ✅ RESTful API with Express
-- ✅ Google Gemini AI integration
+- ✅ OpenAI or Google Gemini AI integration (auto-detects)
 - ✅ Sophisticated agent workflow (Reason → Plan → Act → Reflect)
 - ✅ Intelligent form data extraction
-- ✅ PDF generation with pdf-lib
+- ✅ PDF generation with pdf-lib (hardcoded forms)
+- ✅ PDF analysis and filling for uploaded templates
 - ✅ AI-powered email draft generation
+- ✅ Multiple form type support (Change of Major, Graduation, Add/Drop)
+- ✅ Form template management system
+- ✅ Student data auto-fill service
+- ✅ Deadline tracking service
 - ✅ Session management
+- ✅ File upload handling (multer)
 - ✅ Error handling
 
 ### Agent Intelligence
@@ -181,17 +190,28 @@ This creates an intelligent, context-aware conversation.
 
 ---
 
-## 📄 Form Fields Collected
+## 📄 Form Types Supported
 
-1. **Student Name**
-2. **Student ID** (Z-number)
-3. **Current Major**
-4. **Desired Major**
-5. **Advisor Name**
-6. **Department**
-7. **Email Address**
-8. **Phone Number** (optional)
-9. **Reason for Change**
+### Change of Major
+- Student Name, Student ID, Current Major, Desired Major
+- Advisor Name, Department, Email, Phone (optional)
+- Reason for Change
+
+### Graduation Application
+- Student Name, Student ID, Expected Graduation Date
+- Degree Type, Major, Minor (optional)
+- Honors Program, Thesis Title (optional)
+- Advisor Name, Department, Email, Phone (optional)
+
+### Add/Drop Course
+- Student Name, Student ID, Semester, Year
+- Courses to Add/Drop (with course codes, names, credits)
+- Reason (optional), Advisor Name, Email, Phone (optional)
+
+### Custom Uploaded Forms
+- Dynamic fields extracted from uploaded PDF
+- AI-powered field detection and question generation
+- Supports both fillable PDFs and text overlay
 
 ---
 

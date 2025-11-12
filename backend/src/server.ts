@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import chatRoutes from './routes/chat.js';
 import pdfRoutes from './routes/pdf.js';
 import emailRoutes from './routes/email.js';
+import adminRoutes from './routes/admin.js';
 
 dotenv.config();
 
@@ -19,14 +20,15 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/chat', chatRoutes);
 app.use('/api/pdf', pdfRoutes);
 app.use('/api/email', emailRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', message: 'CampusAgent API is running' });
 });
 
 // Error handling middleware
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Error:', err);
   res.status(500).json({ error: 'Internal server error', message: err.message });
 });

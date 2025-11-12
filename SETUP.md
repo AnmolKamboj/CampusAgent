@@ -17,10 +17,14 @@ Before you begin, ensure you have:
    - Download from [git-scm.com](https://git-scm.com/)
    - Check with: `git --version`
 
-3. **Google Gemini API Key**
-   - Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
-   - Sign in with your Google account
-   - Click "Create API Key"
+3. **AI API Key** (you need at least one)
+   - **OpenAI API Key** (recommended)
+     - Go to [OpenAI Platform](https://platform.openai.com/api-keys)
+     - Sign in and create a new API key
+   - **OR Google Gemini API Key**
+     - Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
+     - Sign in with your Google account
+     - Click "Create API Key"
    - Copy your key (you'll need it in Step 4)
 
 4. **Code Editor** (recommended)
@@ -83,11 +87,16 @@ Add the following content to `backend/.env`:
 
 ```env
 PORT=5000
+
+# You need at least ONE of these:
+OPENAI_API_KEY=your_actual_openai_api_key_here
+# OR
 GEMINI_API_KEY=your_actual_gemini_api_key_here
+
 NODE_ENV=development
 ```
 
-**Important:** Replace `your_actual_gemini_api_key_here` with your real Gemini API key!
+**Important:** Replace with your real API key! The app will use OpenAI if available, otherwise fall back to Gemini.
 
 ### Frontend Environment (Optional)
 
@@ -196,13 +205,14 @@ Let's make sure everything works:
 
 ## Troubleshooting
 
-### Problem: "GEMINI_API_KEY is not set"
+### Problem: "AI API key is not set"
 
 **Solution:**
 - Make sure you created `backend/.env`
-- Verify the file contains `GEMINI_API_KEY=your_key`
+- Verify the file contains either `OPENAI_API_KEY` or `GEMINI_API_KEY` (or both)
 - Restart the backend server
 - Check for typos in the environment variable name
+- The app will use OpenAI if available, otherwise Gemini
 
 ### Problem: Port 3000 or 5000 already in use
 
@@ -246,13 +256,16 @@ npm run build
 - Should return: `{"status":"ok","message":"CampusAgent API is running"}`
 - Verify proxy settings in `frontend/vite.config.ts`
 
-### Problem: Gemini API errors
+### Problem: AI API errors
 
 **Solution:**
-- Verify your API key is valid
-- Check your API quota at Google AI Studio
+- Verify your API key is valid (OpenAI or Gemini)
+- Check your API quota:
+  - OpenAI: https://platform.openai.com/usage
+  - Gemini: https://makersuite.google.com/app/apikey
 - Ensure you're not hitting rate limits
 - Try a different API key
+- The app will automatically fall back to Gemini if OpenAI fails
 
 ---
 

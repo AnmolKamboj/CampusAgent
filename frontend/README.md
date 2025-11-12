@@ -19,7 +19,9 @@ src/
 │   ├── ChatContainer.tsx
 │   ├── ChatMessage.tsx
 │   ├── ChatInput.tsx
-│   └── Sidebar.tsx
+│   ├── Sidebar.tsx
+│   ├── FormSelector.tsx
+│   └── AdminPanel.tsx
 ├── api/               # API client
 │   └── client.ts
 ├── types.ts           # TypeScript types
@@ -92,6 +94,18 @@ npm run lint
 - Action buttons (Start New, Download PDF, Generate Email)
 - Real-time progress tracking
 - FormField sub-components
+- Supports both hardcoded forms and template-based forms
+
+### FormSelector
+- Displays available forms (hardcoded + templates)
+- Form selection interface
+- Shows form descriptions and deadlines
+
+### AdminPanel
+- Form template management
+- Upload new PDF forms
+- View, edit, activate/deactivate forms
+- Delete forms
 
 ## API Client
 
