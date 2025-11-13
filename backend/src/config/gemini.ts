@@ -3,10 +3,13 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const apiKey = process.env.GEMINI_API_KEY;
+const apiKey = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
 
 if (!apiKey) {
-  throw new Error('GEMINI_API_KEY is not set in environment variables');
+  console.error('❌ ERROR: GEMINI_API_KEY is not set in environment variables.');
+  console.error('   Please create a backend/.env file with: GEMINI_API_KEY=your_key_here');
+  console.error('   Get your API key from: https://makersuite.google.com/app/apikey');
+  throw new Error('GEMINI_API_KEY is required. Please set it in backend/.env file.');
 }
 
 export const genAI = new GoogleGenerativeAI(apiKey);
@@ -23,6 +26,16 @@ export const modelConfig = {
 };
 
 export const getModel = () => {
-  return genAI.getGenerativeModel(modelConfig);
+  const model = genAI.getGenerativeModel(modelConfig);
+  return {
+    generateContent: async (prompt: string) => {
+      const result = await model.generateContent(prompt);
+      return {
+        response: {
+          text: () => result.response.text(),
+        },
+      };
+    },
+  };
 };
 

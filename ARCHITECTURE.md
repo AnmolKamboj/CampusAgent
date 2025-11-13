@@ -10,14 +10,18 @@ CampusAgent is a full-stack web application that uses AI to help students fill o
 
 ```
 ┌─────────────┐      ┌─────────────┐      ┌──────────────┐
-│   Browser   │ ──── │   Backend   │ ──── │  Gemini AI   │
-│  (React)    │ HTTP │  (Express)  │ API  │  (Google)    │
-└─────────────┘      └─────────────┘      └──────────────┘
-      │                     │
+│   Browser   │ ──── │   Backend   │ ──── │  AI Service  │
+│  (React)    │ HTTP │  (Express)  │ API  │ (OpenAI/     │
+└─────────────┘      └─────────────┘      │  Gemini)     │
+      │                     │              └──────────────┘
       │                     │
       ▼                     ▼
   Local State         In-Memory Store
   (useState)          (Sessions Map)
+                          │
+                          ▼
+                    File Storage
+                    (PDF Templates)
 ```
 
 ---
@@ -54,9 +58,9 @@ App
   - `sessionId` - Current session identifier
   - `messages` - Conversation history
   - `formData` - Collected form information
+  - `formType` - Current form type (FormType enum or template ID string)
   - `isLoading` - Loading state
-  - `pdfUrl` - PDF download URL
-  - `emailDraft` - Generated email text
+  - `showAdmin` - Admin panel visibility
 
 **Data Flow:**
 ```
@@ -76,10 +80,17 @@ User Input → ChatInput → App.handleSendMessage
 
 **Endpoints:**
 ```typescript
-chatApi.startNewSession()        // POST /api/chat/start
+chatApi.getForms()               // GET /api/chat/forms
+chatApi.startNewSession(...)    // POST /api/chat/start
 chatApi.sendMessage(...)         // POST /api/chat
 chatApi.generatePdf(...)         // POST /api/pdf/generate
 chatApi.generateEmail(...)       // POST /api/email/generate
+
+adminApi.getForms()              // GET /api/admin/forms
+adminApi.uploadForm(...)         // POST /api/admin/forms/upload
+adminApi.updateForm(...)         // PATCH /api/admin/forms/:id
+adminApi.deleteForm(...)         // DELETE /api/admin/forms/:id
+adminApi.toggleForm(...)         // PATCH /api/admin/forms/:id/toggle
 ```
 
 ### Component Design Patterns
@@ -120,22 +131,31 @@ chatApi.generateEmail(...)       // POST /api/email/generate
 - **Node.js** - Runtime
 - **Express** - Web framework
 - **TypeScript** - Type safety
-- **Gemini AI** - Language model
-- **pdf-lib** - PDF generation
+- **OpenAI or Gemini AI** - Language model (auto-detects)
+- **pdf-lib** - PDF generation and filling
+- **pdf-parse** - PDF text extraction and analysis
+- **multer** - File upload handling
 
 ### Application Structure
 
 ```
 Express App
-├── Middleware (CORS, JSON parsing)
+├── Middleware (CORS, JSON parsing, file upload)
 ├── Routes
 │   ├── /api/chat
 │   ├── /api/pdf
-│   └── /api/email
+│   ├── /api/email
+│   └── /api/admin
 └── Services
     ├── AgentService
     ├── PdfService
-    └── EmailService
+    ├── EmailService
+    ├── FormConfigService
+    ├── FormTemplateService
+    ├── PdfAnalysisService
+    ├── PdfFillService
+    ├── StudentDataService
+    └── DeadlineService
 ```
 
 ### Design Patterns
@@ -150,9 +170,15 @@ Express App
 
 **Services:**
 ```
-AgentService  → Handles AI conversation logic
-PdfService    → Handles PDF generation
-EmailService  → Handles email drafting
+AgentService         → Handles AI conversation logic (RAPR pattern)
+PdfService          → Handles PDF generation (hardcoded forms)
+EmailService        → Handles email drafting
+FormConfigService   → Manages hardcoded form configurations
+FormTemplateService → Manages uploaded PDF form templates
+PdfAnalysisService  → Analyzes uploaded PDFs to extract fields
+PdfFillService      → Fills template-based PDFs with data
+StudentDataService  → Handles student data auto-fill (with consent)
+DeadlineService     → Tracks form submission deadlines
 ```
 
 #### 2. Session Management

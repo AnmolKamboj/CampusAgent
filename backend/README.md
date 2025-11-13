@@ -6,22 +6,34 @@ Backend API for the CampusAgent intelligent forms assistant.
 
 - Node.js + Express
 - TypeScript
-- Google Gemini AI
-- pdf-lib
+- OpenAI or Google Gemini AI (auto-detects)
+- pdf-lib (PDF generation and filling)
+- pdf-parse (PDF analysis)
+- multer (file uploads)
 
 ## Project Structure
 
 ```
 src/
-├── config/         # Configuration (Gemini setup)
+├── config/         # Configuration
+│   ├── ai.ts       # Unified AI interface (OpenAI/Gemini)
+│   ├── gemini.ts   # Gemini setup
+│   └── openai.ts   # OpenAI setup
 ├── services/       # Business logic
-│   ├── agentService.ts    # AI agent workflow
-│   ├── pdfService.ts      # PDF generation
-│   └── emailService.ts    # Email drafting
+│   ├── agentService.ts         # AI agent workflow
+│   ├── pdfService.ts           # PDF generation
+│   ├── emailService.ts         # Email drafting
+│   ├── formConfigService.ts   # Hardcoded form configs
+│   ├── formTemplateService.ts # Template management
+│   ├── pdfAnalysisService.ts  # PDF analysis
+│   ├── pdfFillService.ts      # PDF filling
+│   ├── studentDataService.ts  # Student data auto-fill
+│   └── deadlineService.ts     # Deadline tracking
 ├── routes/         # API endpoints
 │   ├── chat.ts     # Chat routes
 │   ├── pdf.ts      # PDF routes
-│   └── email.ts    # Email routes
+│   ├── email.ts    # Email routes
+│   └── admin.ts    # Admin routes
 ├── types.ts        # TypeScript types
 └── server.ts       # Express server
 ```
@@ -34,11 +46,27 @@ src/
    ```
 
 2. Create `.env` file:
+   ```bash
+   cp .env.example .env
+   ```
+   
+   Then edit `.env` and add your API key(s):
    ```env
    PORT=5000
-   GEMINI_API_KEY=your_key_here
+   
+   # You need at least ONE of these:
+   OPENAI_API_KEY=your_openai_key_here
+   # OR
+   GEMINI_API_KEY=your_gemini_key_here
+   
    NODE_ENV=development
    ```
+   
+   **Get API Keys:**
+   - OpenAI: https://platform.openai.com/api-keys
+   - Gemini: https://makersuite.google.com/app/apikey
+   
+   **Note:** The app will use OpenAI if available, otherwise fall back to Gemini. You can provide both keys if you want a fallback.
 
 3. Start development server:
    ```bash
@@ -71,6 +99,29 @@ src/
 - Body: `{ formData }`
 - Returns `{ emailDraft }`
 
+### Admin
+
+**GET** `/api/admin/forms`
+- Get all form templates
+
+**GET** `/api/admin/forms/active`
+- Get active form templates
+
+**GET** `/api/admin/forms/:id`
+- Get single form template
+
+**POST** `/api/admin/forms/upload`
+- Upload new PDF form template (multipart/form-data)
+
+**PATCH** `/api/admin/forms/:id`
+- Update form template
+
+**DELETE** `/api/admin/forms/:id`
+- Delete form template
+
+**PATCH** `/api/admin/forms/:id/toggle`
+- Toggle form active status
+
 ### Health Check
 
 **GET** `/api/health`
@@ -94,8 +145,11 @@ npm start
 | Variable | Description | Required |
 |----------|-------------|----------|
 | PORT | Server port | No (default: 5000) |
-| GEMINI_API_KEY | Google Gemini API key | Yes |
+| OPENAI_API_KEY | OpenAI API key | Yes* |
+| GEMINI_API_KEY | Google Gemini API key | Yes* |
 | NODE_ENV | Environment (development/production) | No |
+
+*You need at least ONE of OPENAI_API_KEY or GEMINI_API_KEY. OpenAI is preferred and will be used if available, otherwise Gemini will be used as fallback.
 
 ## Adding New Features
 
@@ -144,10 +198,11 @@ curl -X POST http://localhost:5000/api/chat \
 
 ## Troubleshooting
 
-**"GEMINI_API_KEY is not set"**
+**"AI API key is not set"**
 - Create `.env` file in backend directory
-- Add your API key
+- Add either `OPENAI_API_KEY` or `GEMINI_API_KEY` (or both)
 - Restart server
+- The app will use OpenAI if available, otherwise Gemini
 
 **Port already in use**
 - Change PORT in `.env`
