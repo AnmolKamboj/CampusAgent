@@ -26,17 +26,14 @@ function ChatContainer({ messages, onSendMessage, onFileUpload, isLoading, onTog
   return (
     <div className="flex flex-col h-screen">
       {/* Header */}
-      <div className="header-glass px-4 py-4 flex items-center space-x-4 flex-shrink-0">
+      <div className="header-glass-blur px-4 py-4 flex items-center space-x-4 flex-shrink-0">
         <button
           onClick={onToggleSidebar}
-          className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+          className="p-2 rounded-lg hover:bg-white/10 transition-colors glow-subtle"
         >
           <Menu size={20} className="text-gray-400" />
         </button>
-        <div>
-          <h1 className="text-xl font-semibold text-gray-100 tracking-tight">CampusAgent</h1>
-          <p className="text-sm text-gray-400">AI-powered form assistant</p>
-        </div>
+        <h1 className="text-xl font-semibold text-gray-100 tracking-tight">CampusAgent</h1>
       </div>
 
       {/* Messages - Centered like ChatGPT */}
@@ -69,15 +66,12 @@ function ChatContainer({ messages, onSendMessage, onFileUpload, isLoading, onTog
           ))
         )}
         {isLoading && (
-          <div className="flex items-start space-x-3 animate-fadeIn">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full glass flex items-center justify-center">
-              <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-            </div>
+          <div className="flex justify-start animate-fadeIn">
             <div className="chat-bubble chat-bubble-agent">
               <div className="flex space-x-1.5">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce loading-pulse"></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce loading-pulse" style={{ animationDelay: '150ms' }}></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce loading-pulse" style={{ animationDelay: '300ms' }}></div>
+                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce loading-pulse" style={{ boxShadow: '0 0 8px rgba(59, 130, 246, 0.5)' }}></div>
+                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce loading-pulse" style={{ animationDelay: '150ms', boxShadow: '0 0 8px rgba(59, 130, 246, 0.5)' }}></div>
+                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce loading-pulse" style={{ animationDelay: '300ms', boxShadow: '0 0 8px rgba(59, 130, 246, 0.5)' }}></div>
               </div>
             </div>
           </div>
@@ -87,7 +81,7 @@ function ChatContainer({ messages, onSendMessage, onFileUpload, isLoading, onTog
       </div>
 
       {/* Input - Centered */}
-      <div className="border-t border-white/5 flex-shrink-0">
+      <div className="flex-shrink-0">
         <div className="max-w-3xl mx-auto">
           <ChatInput onSendMessage={onSendMessage} onFileUpload={onFileUpload} isLoading={isLoading} />
         </div>
