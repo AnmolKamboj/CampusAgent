@@ -1,151 +1,61 @@
-import { StudentData, FormData, FormType, ChangeOfMajorData, GraduationApplicationData, AddDropCourseData } from '../types.js';
+import { FormType, StudentData, FormData } from '../types.js';
+
+// In-memory storage for student data (replace with database in production)
+const studentDataStore: Map<string, StudentData> = new Map();
 
 export class StudentDataService {
-  // In-memory storage (replace with database in production)
-  private studentDatabase: Map<string, StudentData>;
-
-  constructor() {
-    this.studentDatabase = new Map();
-    // Initialize with some sample data for demo
-    this.initializeSampleData();
+  // Get student data by ID
+  getStudentData(studentId: string): StudentData | undefined {
+    return studentDataStore.get(studentId);
   }
 
-  private initializeSampleData() {
-    // Sample student data for demonstration
-    const sampleStudent: StudentData = {
-      studentId: 'Z12345678',
-      studentName: 'John Doe',
-      email: 'john.doe@fau.edu',
-      phone: '555-123-4567',
-      currentMajor: 'Biology',
-      advisorName: 'Dr. Jane Smith',
-      department: 'Biology Department',
-      enrollmentStatus: 'Full-time',
-      gpa: 3.5,
-      consentGiven: false, // Requires explicit consent
-      consentDate: undefined,
-    };
-    this.studentDatabase.set('Z12345678', sampleStudent);
-  }
-
-  // Get student data by ID (requires consent)
-  async getStudentData(studentId: string, consentGiven: boolean): Promise<StudentData | null> {
-    if (!consentGiven) {
-      return null;
+  // Store student data (with consent)
+  storeStudentData(studentData: StudentData): void {
+    if (studentData.consentGiven) {
+      studentDataStore.set(studentData.studentId, studentData);
     }
-
-    const studentData = this.studentDatabase.get(studentId);
-    if (!studentData) {
-      return null;
-    }
-
-    // Update consent if provided
-    if (consentGiven && !studentData.consentGiven) {
-      studentData.consentGiven = true;
-      studentData.consentDate = new Date();
-      this.studentDatabase.set(studentId, studentData);
-    }
-
-    return studentData;
   }
 
-  // Store or update student data
-  async saveStudentData(studentData: StudentData): Promise<void> {
-    this.studentDatabase.set(studentData.studentId, studentData);
-  }
-
-  // Auto-fill form data from student database
+  // Auto-fill form data from stored student data
   async autoFillFormData(
     formType: FormType,
     studentId: string,
-    consentGiven: boolean,
-    existingFormData: FormData
+    withConsent: boolean,
+    existingData: FormData
   ): Promise<Partial<FormData>> {
-    if (!consentGiven) {
+    if (!withConsent) {
       return {};
     }
 
-    const studentData = await this.getStudentData(studentId, consentGiven);
-    if (!studentData) {
+    const studentData = this.getStudentData(studentId);
+    if (!studentData || !studentData.consentGiven) {
       return {};
     }
 
-    const autoFilled: Partial<FormData> = {};
-
-    // Common fields
-    if (!existingFormData.studentName) {
-      autoFilled.studentName = studentData.studentName;
-    }
-    if (!existingFormData.email) {
-      autoFilled.email = studentData.email;
-    }
-    if (!existingFormData.phone && studentData.phone) {
-      autoFilled.phone = studentData.phone;
-    }
+    // Auto-fill common fields
+    const autoFilled: Partial<FormData> = {
+      studentName: existingData.studentName || studentData.studentName,
+      studentId: existingData.studentId || studentData.studentId,
+      email: existingData.email || studentData.email,
+      phone: existingData.phone || studentData.phone,
+    };
 
     // Form-specific auto-fill
-    switch (formType) {
-      case FormType.CHANGE_OF_MAJOR:
-        const changeMajorData = existingFormData as ChangeOfMajorData;
-        if (!changeMajorData.currentMajor && studentData.currentMajor) {
-          (autoFilled as ChangeOfMajorData).currentMajor = studentData.currentMajor;
-        }
-        if (!changeMajorData.advisorName && studentData.advisorName) {
-          (autoFilled as ChangeOfMajorData).advisorName = studentData.advisorName;
-        }
-        if (!changeMajorData.department && studentData.department) {
-          (autoFilled as ChangeOfMajorData).department = studentData.department;
-        }
-        break;
-
-      case FormType.GRADUATION_APPLICATION:
-        const gradData = existingFormData as GraduationApplicationData;
-        if (!gradData.major && studentData.currentMajor) {
-          (autoFilled as GraduationApplicationData).major = studentData.currentMajor;
-        }
-        if (!gradData.advisorName && studentData.advisorName) {
-          (autoFilled as GraduationApplicationData).advisorName = studentData.advisorName;
-        }
-        if (!gradData.department && studentData.department) {
-          (autoFilled as GraduationApplicationData).department = studentData.department;
-        }
-        break;
-
-      case FormType.ADD_DROP_COURSE:
-        const addDropData = existingFormData as AddDropCourseData;
-        if (!addDropData.advisorName && studentData.advisorName) {
-          (autoFilled as AddDropCourseData).advisorName = studentData.advisorName;
-        }
-        break;
+    if (formType === FormType.CHANGE_OF_MAJOR && 'currentMajor' in existingData) {
+      const changeData = autoFilled as any;
+      const existingChangeData = existingData as any;
+      changeData.currentMajor = existingChangeData.currentMajor || studentData.currentMajor;
+      changeData.advisorName = existingChangeData.advisorName || studentData.advisorName;
+      changeData.department = existingChangeData.department || studentData.department;
     }
 
     return autoFilled;
   }
 
-  // Request consent from student
-  async requestConsent(studentId: string): Promise<{ message: string; requiresConsent: boolean }> {
-    const studentData = this.studentDatabase.get(studentId);
-    
-    if (!studentData) {
-      return {
-        message: 'Student data not found. Please enter your information manually.',
-        requiresConsent: false,
-      };
-    }
-
-    if (studentData.consentGiven) {
-      return {
-        message: 'You have already given consent. I can auto-fill your information.',
-        requiresConsent: false,
-      };
-    }
-
-    return {
-      message: `I found your student record (${studentData.studentName}). Would you like me to auto-fill your form with your saved information? This will save you time. Type "yes" to consent, or "no" to enter information manually.`,
-      requiresConsent: true,
-    };
+  // Clear student data (for privacy)
+  clearStudentData(studentId: string): void {
+    studentDataStore.delete(studentId);
   }
 }
 
 export const studentDataService = new StudentDataService();
-

@@ -1,148 +1,51 @@
-import { FormData, FormType, ChangeOfMajorData, GraduationApplicationData, AddDropCourseData } from '../types';
-import { FileText, Mail, PlusCircle, Download, AlertCircle } from 'lucide-react';
+import { FormData } from '../types';
+import { FileText, Mail, PlusCircle, Download, AlertCircle, Upload } from 'lucide-react';
 
 interface SidebarProps {
   formData: FormData;
-  formType: FormType | string | null; // Supports both FormType enum and template ID (string)
   onStartNew: () => void;
   onDownloadPdf: () => void;
   onGenerateEmail: () => void;
   isLoading: boolean;
+  pdfUploaded: boolean;
 }
 
-function Sidebar({ formData, formType, onStartNew, onDownloadPdf, onGenerateEmail, isLoading }: SidebarProps) {
-  const getFormName = () => {
-    if (!formType) return 'Academic Form';
-    // Check if it's a template ID (UUID format)
-    if (typeof formType === 'string' && formType.length === 36 && formType.includes('-')) {
-      return 'Custom Form';
-    }
-    switch (formType) {
-      case FormType.CHANGE_OF_MAJOR:
-        return 'Change of Major';
-      case FormType.GRADUATION_APPLICATION:
-        return 'Graduation Application';
-      case FormType.ADD_DROP_COURSE:
-        return 'Add/Drop Course';
-      default:
-        return 'Academic Form';
-    }
-  };
-
-  const hasRequiredData = () => {
-    if (!formType) return false;
-    
-    // For template-based forms (string IDs), we can't easily check required fields
-    // So we'll just check if there's any data
-    if (typeof formType === 'string' && formType.length === 36 && formType.includes('-')) {
-      return Object.keys(formData).length > 0;
-    }
-
-    switch (formType) {
-      case FormType.CHANGE_OF_MAJOR:
-        const changeMajor = formData as ChangeOfMajorData;
-        return !!(changeMajor.studentName && changeMajor.studentId && changeMajor.currentMajor && 
-                 changeMajor.desiredMajor && changeMajor.advisorName && changeMajor.email);
-      
-      case FormType.GRADUATION_APPLICATION:
-        const grad = formData as GraduationApplicationData;
-        return !!(grad.studentName && grad.studentId && grad.expectedGraduationDate && 
-                 grad.degreeType && grad.major && grad.email);
-      
-      case FormType.ADD_DROP_COURSE:
-        const addDrop = formData as AddDropCourseData;
-        return !!(addDrop.studentName && addDrop.studentId && addDrop.semester && 
-                 addDrop.year && addDrop.email);
-      
-      default:
-        return false;
-    }
+function Sidebar({ formData, onStartNew, onDownloadPdf, onGenerateEmail, isLoading, pdfUploaded }: SidebarProps) {
+  const hasData = () => {
+    return Object.keys(formData).length > 0;
   };
 
   const renderFormFields = () => {
-    if (!formType) return null;
+    if (!hasData()) {
+      return (
+        <div className="text-center text-gray-500 text-sm py-8">
+          {pdfUploaded ? (
+            <p>Answer questions in the chat to fill the form</p>
+          ) : (
+            <p>Upload a PDF to get started</p>
+          )}
+        </div>
+      );
+    }
     
-    // For template-based forms (string IDs), render all fields dynamically
-    if (typeof formType === 'string' && formType.length === 36 && formType.includes('-')) {
-      return Object.entries(formData).map(([key, value]) => (
-        <FormField 
-          key={key} 
-          label={key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())} 
-          value={typeof value === 'object' ? JSON.stringify(value) : String(value)} 
-        />
-      ));
-    }
-
-    switch (formType) {
-      case FormType.CHANGE_OF_MAJOR:
-        const changeMajor = formData as ChangeOfMajorData;
-        return (
-          <>
-            <FormField label="Student Name" value={changeMajor.studentName} />
-            <FormField label="Student ID" value={changeMajor.studentId} />
-            <FormField label="Current Major" value={changeMajor.currentMajor} />
-            <FormField label="Desired Major" value={changeMajor.desiredMajor} />
-            <FormField label="Advisor Name" value={changeMajor.advisorName} />
-            <FormField label="Department" value={changeMajor.department} />
-            <FormField label="Email" value={changeMajor.email} />
-            <FormField label="Phone" value={changeMajor.phone} />
-            <FormField label="Reason" value={changeMajor.reason} />
-          </>
-        );
-
-      case FormType.GRADUATION_APPLICATION:
-        const grad = formData as GraduationApplicationData;
-        return (
-          <>
-            <FormField label="Student Name" value={grad.studentName} />
-            <FormField label="Student ID" value={grad.studentId} />
-            <FormField label="Expected Graduation Date" value={grad.expectedGraduationDate} />
-            <FormField label="Degree Type" value={grad.degreeType} />
-            <FormField label="Major" value={grad.major} />
-            <FormField label="Minor" value={grad.minor} />
-            <FormField label="Honors Program" value={grad.honorsProgram ? 'Yes' : undefined} />
-            <FormField label="Thesis Title" value={grad.thesisTitle} />
-            <FormField label="Advisor Name" value={grad.advisorName} />
-            <FormField label="Department" value={grad.department} />
-            <FormField label="Email" value={grad.email} />
-            <FormField label="Phone" value={grad.phone} />
-          </>
-        );
-
-      case FormType.ADD_DROP_COURSE:
-        const addDrop = formData as AddDropCourseData;
-        return (
-          <>
-            <FormField label="Student Name" value={addDrop.studentName} />
-            <FormField label="Student ID" value={addDrop.studentId} />
-            <FormField label="Semester" value={addDrop.semester} />
-            <FormField label="Year" value={addDrop.year} />
-            <FormField 
-              label="Courses to Add" 
-              value={addDrop.coursesToAdd?.map(c => `${c.courseCode} - ${c.courseName}`).join(', ')} 
-            />
-            <FormField 
-              label="Courses to Drop" 
-              value={addDrop.coursesToDrop?.map(c => `${c.courseCode} - ${c.courseName}`).join(', ')} 
-            />
-            <FormField label="Advisor Name" value={addDrop.advisorName} />
-            <FormField label="Email" value={addDrop.email} />
-            <FormField label="Phone" value={addDrop.phone} />
-            <FormField label="Reason" value={addDrop.reason} />
-          </>
-        );
-
-      default:
-        return null;
-    }
+    // Render all fields dynamically
+    return Object.entries(formData).map(([key, value]) => (
+      <FormField 
+        key={key} 
+        label={key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())} 
+        value={typeof value === 'object' ? JSON.stringify(value) : String(value)} 
+      />
+    ));
   };
 
   return (
     <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
       {/* Header */}
       <div className="p-6 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-900">Form Assistant</h2>
-        <p className="text-sm text-gray-600 mt-1">{getFormName()}</p>
+        <h2 className="text-lg font-semibold text-gray-900">PDF Form Assistant</h2>
+        <p className="text-sm text-gray-600 mt-1">
+          {pdfUploaded ? 'Form Uploaded ✓' : 'Upload PDF to start'}
+        </p>
       </div>
 
       {/* Actions */}
@@ -158,7 +61,7 @@ function Sidebar({ formData, formType, onStartNew, onDownloadPdf, onGenerateEmai
 
         <button
           onClick={onDownloadPdf}
-          disabled={isLoading || !hasRequiredData()}
+          disabled={isLoading || !pdfUploaded || !hasData()}
           className="btn-primary w-full flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Download size={18} />
@@ -167,18 +70,27 @@ function Sidebar({ formData, formType, onStartNew, onDownloadPdf, onGenerateEmai
 
         <button
           onClick={onGenerateEmail}
-          disabled={isLoading || !hasRequiredData()}
+          disabled={isLoading || !pdfUploaded || !hasData()}
           className="btn-secondary w-full flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Mail size={18} />
           <span>Generate Email</span>
         </button>
 
-        {!hasRequiredData() && (
+        {!pdfUploaded && (
+          <div className="flex items-start space-x-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <Upload size={16} className="text-blue-600 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-blue-800">
+              Upload a PDF form using the 📎 button in the chat to get started!
+            </p>
+          </div>
+        )}
+        
+        {pdfUploaded && !hasData() && (
           <div className="flex items-start space-x-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
             <AlertCircle size={16} className="text-yellow-600 mt-0.5 flex-shrink-0" />
             <p className="text-xs text-yellow-800">
-              Please complete all required fields before generating PDF or email.
+              Answer the questions in the chat to fill out your form.
             </p>
           </div>
         )}
