@@ -1,135 +1,86 @@
-import { FormType, DeadlineReminder, FormConfig } from '../types.js';
-import { formConfigService } from './formConfigService.js';
+import { FormType, DeadlineReminder } from '../types.js';
+
+// In-memory storage for deadlines (replace with database in production)
+const deadlines: Map<FormType, Date> = new Map();
+const reminders: Map<string, DeadlineReminder> = new Map();
 
 export class DeadlineService {
-  // In-memory storage (replace with database in production)
-  private reminders: Map<string, DeadlineReminder[]>;
-
-  constructor() {
-    this.reminders = new Map();
+  // Set deadline for a form type
+  setDeadline(formType: FormType, deadline: Date): void {
+    deadlines.set(formType, deadline);
   }
 
   // Get deadline for a form type
   getDeadline(formType: FormType): Date | null {
-    const config = formConfigService.getConfig(formType);
-    return config?.deadline || null;
+    return deadlines.get(formType) || null;
   }
 
-  // Check if deadline is approaching
-  checkDeadlineWarning(formType: FormType, daysBefore: number = 7): boolean {
-    const deadline = this.getDeadline(formType);
-    if (!deadline) return false;
+  // Check if deadline is approaching (within N days)
+  checkDeadlineWarning(formType: FormType, daysBeforeWarning: number): boolean {
+    const deadline = deadlines.get(formType);
+    if (!deadline) {
+      return false;
+    }
 
     const now = new Date();
     const daysUntilDeadline = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     
-    return daysUntilDeadline <= daysBefore && daysUntilDeadline > 0;
+    return daysUntilDeadline <= daysBeforeWarning && daysUntilDeadline >= 0;
   }
 
-  // Get days until deadline
-  getDaysUntilDeadline(formType: FormType): number | null {
-    const deadline = this.getDeadline(formType);
-    if (!deadline) return null;
-
-    const now = new Date();
-    const daysUntil = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    return daysUntil;
-  }
-
-  // Create or update reminder
-  async createReminder(
-    formType: FormType,
-    studentId: string,
-    deadline: Date
-  ): Promise<DeadlineReminder> {
-    const reminder: DeadlineReminder = {
-      formType,
-      studentId,
-      deadline,
-      reminderSent: false,
-    };
-
-    const studentReminders = this.reminders.get(studentId) || [];
-    studentReminders.push(reminder);
-    this.reminders.set(studentId, studentReminders);
-
-    return reminder;
-  }
-
-  // Get reminders for a student
-  getReminders(studentId: string): DeadlineReminder[] {
-    return this.reminders.get(studentId) || [];
-  }
-
-  // Check and send reminders (should be called periodically)
-  async checkAndSendReminders(): Promise<DeadlineReminder[]> {
-    const remindersToSend: DeadlineReminder[] = [];
-    const now = new Date();
-
-    for (const [_studentId, reminders] of this.reminders.entries()) {
-      for (const reminder of reminders) {
-        if (reminder.reminderSent) continue;
-
-        const config = formConfigService.getConfig(reminder.formType);
-        if (!config?.deadlineReminderDays) continue;
-
-        const daysUntil = Math.ceil((reminder.deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-
-        // Check if we should send a reminder today
-        if (config.deadlineReminderDays.includes(daysUntil)) {
-          reminder.reminderSent = true;
-          reminder.reminderDate = now;
-          remindersToSend.push(reminder);
-        }
-      }
+  // Check if deadline has passed
+  isDeadlinePassed(formType: FormType): boolean {
+    const deadline = deadlines.get(formType);
+    if (!deadline) {
+      return false;
     }
 
-    return remindersToSend;
+    return new Date() > deadline;
   }
 
-  // Generate reminder message
-  generateReminderMessage(reminder: DeadlineReminder, config: FormConfig): string {
-    const daysUntil = this.getDaysUntilDeadline(reminder.formType) || 0;
-    const deadlineStr = reminder.deadline.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
+  // Add reminder for a student
+  addReminder(reminder: DeadlineReminder): void {
+    const key = `${reminder.formType}-${reminder.studentId}`;
+    reminders.set(key, reminder);
+  }
 
-    if (daysUntil <= 0) {
-      return `⚠️ URGENT: The deadline for ${config.name} has passed or is today (${deadlineStr}). Please submit your form immediately!`;
-    } else if (daysUntil === 1) {
-      return `⚠️ Reminder: The deadline for ${config.name} is tomorrow (${deadlineStr}). Please submit your form soon!`;
-    } else {
-      return `📅 Reminder: The deadline for ${config.name} is in ${daysUntil} days (${deadlineStr}). Don't forget to submit your form!`;
+  // Get reminder for a student
+  getReminder(formType: FormType, studentId: string): DeadlineReminder | undefined {
+    const key = `${formType}-${studentId}`;
+    return reminders.get(key);
+  }
+
+  // Mark reminder as sent
+  markReminderSent(formType: FormType, studentId: string): void {
+    const key = `${formType}-${studentId}`;
+    const reminder = reminders.get(key);
+    if (reminder) {
+      reminder.reminderSent = true;
+      reminder.reminderDate = new Date();
+      reminders.set(key, reminder);
     }
   }
 
-  // Get deadline status message
+  // Get a human-readable deadline status message
   getDeadlineStatusMessage(formType: FormType): string | null {
-    const deadline = this.getDeadline(formType);
-    if (!deadline) return null;
+    const deadline = deadlines.get(formType);
+    if (!deadline) {
+      return null;
+    }
 
-    const daysUntil = this.getDaysUntilDeadline(formType);
-    if (daysUntil === null) return null;
-
-    const deadlineStr = deadline.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-
-    if (daysUntil < 0) {
-      return `⚠️ Deadline passed: ${deadlineStr}`;
-    } else if (daysUntil === 0) {
-      return `⚠️ Deadline is today: ${deadlineStr}`;
-    } else if (daysUntil <= 7) {
-      return `⚠️ Deadline in ${daysUntil} days: ${deadlineStr}`;
+    const now = new Date();
+    const daysUntilDeadline = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (daysUntilDeadline < 0) {
+      return `⚠️ **Deadline passed** (${Math.abs(daysUntilDeadline)} days ago)`;
+    } else if (daysUntilDeadline === 0) {
+      return `🔴 **Deadline is TODAY!**`;
+    } else if (daysUntilDeadline <= 7) {
+      return `⏰ **Deadline in ${daysUntilDeadline} days** (${deadline.toLocaleDateString()})`;
     } else {
-      return `📅 Deadline: ${deadlineStr} (${daysUntil} days remaining)`;
+      return `📅 Deadline: ${deadline.toLocaleDateString()} (${daysUntilDeadline} days remaining)`;
     }
   }
 }
 
 export const deadlineService = new DeadlineService();
-

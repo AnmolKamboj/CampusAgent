@@ -247,21 +247,43 @@ export class AgentService {
 
   // PLAN: Determine next steps (this will be recalculated after extraction)
   private async plan(reasoningResult: any): Promise<any> {
-    const { session } = reasoningResult;
+    const { session, formData } = reasoningResult;
     const formType = session.formType || FormType.CHANGE_OF_MAJOR;
+
+    // Determine what fields are required for this form type
+    let requiredFields: string[] = ['studentName', 'studentId'];
+    
+    if (formType === FormType.CHANGE_OF_MAJOR) {
+      requiredFields = ['studentName', 'studentId', 'currentMajor', 'desiredMajor', 'advisorName'];
+    } else if (formType === FormType.GRADUATION_APPLICATION) {
+      requiredFields = ['studentName', 'studentId', 'expectedGraduationDate', 'degreeType'];
+    } else if (formType === FormType.ADD_DROP_COURSE) {
+      requiredFields = ['studentName', 'studentId', 'courseAction', 'courseName', 'courseCode'];
+    }
+    
+    // Determine what field we should be asking for next (before extraction)
+    let nextField = null;
+    for (const field of requiredFields) {
+      if (!formData[field] || (formData[field] && formData[field].trim() === '')) {
+        nextField = field;
+        break;
+      }
+    }
 
     return {
       ...reasoningResult,
       formType,
+      nextField,  // What field we're currently asking for
+      missingFields: requiredFields.filter(f => !formData[f] || formData[f].trim() === ''),
     };
   }
 
   // ACT: Generate response and extract data
   private async act(planResult: any): Promise<any> {
-    const { session, userMessage, formData, aiAnalysis, formType } = planResult;
+    const { session, userMessage, formData, aiAnalysis, formType, nextField: askedField } = planResult;
     
-    // Extract data from user message FIRST
-    const extractedData = await this.extractFormData(userMessage, formData, aiAnalysis, formType);
+    // Extract data from user message FIRST (pass askedField for context)
+    const extractedData = await this.extractFormData(userMessage, formData, aiAnalysis, formType, askedField);
     
     // Merge extracted data
     const updatedFormData = { ...formData, ...extractedData };
@@ -354,9 +376,16 @@ export class AgentService {
         `📄 Click "Download PDF" to get your filled form\n` +
         `📧 Click "Generate Email" to create a submission email`;
     } else if (nextField) {
-      responseMessage = await this.generateNextQuestion(nextField, updatedFormData, formType);
+      // ALWAYS build a conversational response - acknowledge what they said
+      responseMessage = await this.buildConversationalResponse(
+        userMessage,
+        extractedData, 
+        nextField,
+        updatedFormData,
+        formType
+      );
     } else {
-      responseMessage = 'I need more information to complete your form. Could you please provide the missing details?';
+      responseMessage = 'Hmm, I need a bit more information to complete your form. Could you help me fill in the remaining details?';
     }
     
     return {
@@ -417,11 +446,59 @@ Provide a brief analysis.`;
     userMessage: string, 
     currentData: FormData, 
     _aiAnalysis: string,
-    formType?: FormType
+    formType?: FormType,
+    nextFieldAsked?: string  // What field are we currently asking for?
   ): Promise<Partial<FormData>> {
     const extracted: Partial<FormData> = {};
     const lowerMessage = userMessage.toLowerCase().trim();
     const trimmedMessage = userMessage.trim();
+    
+    // Check if message is conversational/greeting first (BEFORE context-aware extraction)
+    const conversationalPatterns = [
+      /^(hi|hello|hey|greetings|good morning|good afternoon|good evening|sup|yo|wassup|what's up|whats up)$/i,
+      /^(thanks|thank you|ty|thx|appreciate it|cool|ok|okay|alright|nice|great)$/i,
+      /^(yes|no|yeah|nah|yep|nope|sure|fine)$/i,
+      /^(lol|haha|hehe|lmao|xd|😂|😄|😊)$/i,
+      /^(how are you|what's up|whats up)$/i,
+    ];
+    
+    const isConversational = conversationalPatterns.some(pattern => pattern.test(trimmedMessage));
+    
+    // Also check if message is VERY short and contains no substantive content
+    const isVeryShort = trimmedMessage.length <= 3 && !/\d/.test(trimmedMessage);
+    
+    // CONTEXT-AWARE EXTRACTION: If we know what field we're asking for, try that first
+    // BUT: Skip if message is conversational/greeting or very short
+    if (nextFieldAsked && trimmedMessage.length > 0 && !/^\d+$/.test(trimmedMessage) && !isConversational && !isVeryShort) {
+      // If asking for studentName, prioritize name extraction
+      // Additional validation: name should have at least 2 chars and look like a name
+      if (nextFieldAsked === 'studentName' && !currentData.studentName) {
+        // Validate it looks like a name (at least 2 characters, contains letters)
+        // The greeting check above already filters out "hi", "hey", etc.
+        if (trimmedMessage.length >= 2 && /[a-zA-Z]/.test(trimmedMessage)) {
+          extracted.studentName = trimmedMessage;
+          return extracted; // Return immediately to avoid false positives
+        }
+      }
+      
+      // If asking for currentMajor, treat response as current major
+      if (nextFieldAsked === 'currentMajor' && formType === FormType.CHANGE_OF_MAJOR) {
+        (extracted as any).currentMajor = trimmedMessage;
+        return extracted;
+      }
+      
+      // If asking for desiredMajor, treat response as desired major
+      if (nextFieldAsked === 'desiredMajor' && formType === FormType.CHANGE_OF_MAJOR) {
+        (extracted as any).desiredMajor = trimmedMessage;
+        return extracted;
+      }
+      
+      // If asking for email, advisorName, department, etc., use the response directly
+      if (nextFieldAsked === 'advisorName' || nextFieldAsked === 'department') {
+        (extracted as any)[nextFieldAsked] = trimmedMessage;
+        return extracted;
+      }
+    }
 
     // Student name (look for "my name is" or "I'm" or "I am" or just a name pattern)
     // Only extract if name is not already set
@@ -488,32 +565,33 @@ Provide a brief analysis.`;
     if (formType === FormType.CHANGE_OF_MAJOR) {
       const changeMajorData = currentData as ChangeOfMajorData;
       if (!changeMajorData.desiredMajor || (changeMajorData.desiredMajor && changeMajorData.desiredMajor.trim() === '')) {
+        // Enhanced major detection - much more flexible
         const majorKeywords = [
           'computer science', 'biology', 'psychology', 'engineering', 'mathematics', 
           'physics', 'chemistry', 'english', 'history', 'business', 'economics',
           'cs', 'compsci', 'comp sci', 'computer', 'science', 'math', 'statistics',
-          'accounting', 'finance', 'marketing', 'management', 'nursing', 'education'
+          'accounting', 'finance', 'marketing', 'management', 'nursing', 'education',
+          'master', 'bachelor', 'phd', 'doctorate', 'mba', 'ms', 'bs', 'ba', 'ma'
         ];
         
-        // Check if message contains major keywords
+        // Check if message contains major keywords - improved extraction
+        let foundMajor = false;
         for (const keyword of majorKeywords) {
           if (lowerMessage.includes(keyword)) {
-            // Extract the full major name from context
-            const majorMatch = userMessage.match(new RegExp(`(${keyword}[\\s\\w]*?)`, 'i'));
-            if (majorMatch) {
-              (extracted as ChangeOfMajorData).desiredMajor = majorMatch[1].trim();
-            } else {
-              (extracted as ChangeOfMajorData).desiredMajor = trimmedMessage;
-            }
+            // Just use the whole message as the major (includes "Master in Computer Science", etc.)
+            (extracted as ChangeOfMajorData).desiredMajor = trimmedMessage;
+            foundMajor = true;
             break;
           }
         }
         
-        // If no keyword match but message looks like a major name (capitalized words, no numbers)
-        if (!(extracted as ChangeOfMajorData).desiredMajor && 
-            /^[A-Z][a-z]+(\s[A-Z][a-z]+)*$/.test(trimmedMessage) && 
+        // If no keyword match but message looks like a major name (capitalized words, 3+ words, no numbers)
+        // This handles things like "Software Engineering" or "Information Technology"
+        if (!foundMajor && 
+            /^[A-Z][a-zA-Z]+(\s+[A-Za-z]+)+$/.test(trimmedMessage) && 
             !/\d/.test(trimmedMessage) &&
-            trimmedMessage.length > 3) {
+            trimmedMessage.length > 5 &&
+            trimmedMessage.split(' ').length >= 2) {
           (extracted as ChangeOfMajorData).desiredMajor = trimmedMessage;
         }
       }
@@ -623,6 +701,64 @@ Provide a brief analysis.`;
     return extracted;
   }
 
+  // Helper: Build conversational response - ALWAYS acknowledge what user said
+  private async buildConversationalResponse(
+    userMessage: string,
+    extractedData: Partial<FormData>,
+    nextField: string,
+    formData: FormData,
+    formType?: FormType | string
+  ): Promise<string> {
+    const lowerMessage = userMessage.toLowerCase().trim();
+    let acknowledgment = '';
+    
+    // Check if message is off-topic/conversational first
+    if (Object.keys(extractedData).length === 0) {
+      // No data extracted - handle conversational messages
+      if (/^(hi|hello|hey|greetings|good morning|good afternoon|good evening)/.test(lowerMessage)) {
+        acknowledgment = '👋 Hello there! Nice to meet you! ';
+      } else if (/^(thanks|thank you|ty|thx|appreciate)/.test(lowerMessage)) {
+        acknowledgment = '😊 You\'re very welcome! Happy to help! ';
+      } else if (/(how are you|what's up|whats up|wassup)/.test(lowerMessage)) {
+        acknowledgment = '😊 I\'m doing great, thanks for asking! ';
+      } else if (/(joke|funny|laugh|lol|haha|hehe)/.test(lowerMessage)) {
+        acknowledgment = '😄 Haha, I love your energy! ';
+      } else if (/(confused|don't understand|what|huh|help)/.test(lowerMessage)) {
+        acknowledgment = '🤔 No worries at all! I\'m here to help make this easy for you. ';
+      } else if (lowerMessage.length < 10) {
+        acknowledgment = '😊 Got it! ';
+      } else {
+        acknowledgment = 'I hear you! ';
+      }
+    } else {
+      // Data was extracted - acknowledge what we got
+      const extractedFields = Object.keys(extractedData);
+      
+      if (extractedFields.includes('desiredMajor')) {
+        const major = (extractedData as any).desiredMajor;
+        acknowledgment = `Great choice! ${major} sounds like an excellent program. `;
+      } else if (extractedFields.includes('studentName')) {
+        const name = extractedData.studentName;
+        acknowledgment = `Nice to meet you, ${name}! `;
+      } else if (extractedFields.includes('studentId')) {
+        acknowledgment = `Perfect, got your ID! `;
+      } else if (extractedFields.includes('currentMajor')) {
+        acknowledgment = `Got it, so you\'re currently in ${(extractedData as any).currentMajor}. `;
+      } else if (extractedFields.includes('email')) {
+        acknowledgment = `Awesome, I\'ll use that email to contact you. `;
+      } else if (extractedFields.includes('advisorName')) {
+        acknowledgment = `Great, ${(extractedData as any).advisorName} is your advisor. `;
+      } else {
+        acknowledgment = 'Perfect, got that information! ';
+      }
+    }
+    
+    // Now ask the next question naturally
+    const nextQuestion = await this.generateNextQuestion(nextField, formData, formType);
+    
+    return acknowledgment + nextQuestion;
+  }
+
   // Helper: Generate next question (supports both FormType and template ID)
   private async generateNextQuestion(nextField: string, _formData: FormData | DynamicFormData, formType?: FormType | string): Promise<string> {
     // Check if it's a template
@@ -640,26 +776,26 @@ Provide a brief analysis.`;
       }
     }
     
-    // Hardcoded questions for hardcoded forms
+    // Hardcoded questions for hardcoded forms - natural and conversational
     const formTypeEnum = formType as FormType;
     const questions: Record<string, Record<FormType, string>> = {
       'desiredMajor': {
-        [FormType.CHANGE_OF_MAJOR]: '🎓 What major would you like to change to?',
+        [FormType.CHANGE_OF_MAJOR]: 'What major are you thinking of switching to? 🎓',
         [FormType.GRADUATION_APPLICATION]: '',
         [FormType.ADD_DROP_COURSE]: '',
       },
       'studentName': {
-        [FormType.CHANGE_OF_MAJOR]: '👤 What is your full name?',
-        [FormType.GRADUATION_APPLICATION]: '👤 What is your full name?',
-        [FormType.ADD_DROP_COURSE]: '👤 What is your full name?',
+        [FormType.CHANGE_OF_MAJOR]: 'What\'s your full name?',
+        [FormType.GRADUATION_APPLICATION]: 'What\'s your full name?',
+        [FormType.ADD_DROP_COURSE]: 'What\'s your full name?',
       },
       'studentId': {
-        [FormType.CHANGE_OF_MAJOR]: '🔢 What is your student ID or Z-number?',
-        [FormType.GRADUATION_APPLICATION]: '🔢 What is your student ID or Z-number?',
-        [FormType.ADD_DROP_COURSE]: '🔢 What is your student ID or Z-number?',
+        [FormType.CHANGE_OF_MAJOR]: 'And what\'s your student ID? (You can include the Z if you have one)',
+        [FormType.GRADUATION_APPLICATION]: 'What\'s your student ID? (You can include the Z if you have one)',
+        [FormType.ADD_DROP_COURSE]: 'What\'s your student ID? (You can include the Z if you have one)',
       },
       'currentMajor': {
-        [FormType.CHANGE_OF_MAJOR]: '📚 What is your current major?',
+        [FormType.CHANGE_OF_MAJOR]: 'What major are you in right now? 📚',
         [FormType.GRADUATION_APPLICATION]: '',
         [FormType.ADD_DROP_COURSE]: '',
       },
@@ -689,29 +825,29 @@ Provide a brief analysis.`;
         [FormType.ADD_DROP_COURSE]: '📅 What year? (e.g., 2024)',
       },
       'advisorName': {
-        [FormType.CHANGE_OF_MAJOR]: '👨‍🏫 Who is your academic advisor?',
-        [FormType.GRADUATION_APPLICATION]: '👨‍🏫 Who is your academic advisor?',
-        [FormType.ADD_DROP_COURSE]: '👨‍🏫 Who is your academic advisor?',
+        [FormType.CHANGE_OF_MAJOR]: 'Who\'s your academic advisor? 👨‍🏫',
+        [FormType.GRADUATION_APPLICATION]: 'Who\'s your academic advisor? 👨‍🏫',
+        [FormType.ADD_DROP_COURSE]: 'Who\'s your academic advisor? 👨‍🏫',
       },
       'department': {
-        [FormType.CHANGE_OF_MAJOR]: '🏢 What department is your new major in?',
-        [FormType.GRADUATION_APPLICATION]: '🏢 What department?',
+        [FormType.CHANGE_OF_MAJOR]: 'Which department is that major in? (like "Computer Science Department")',
+        [FormType.GRADUATION_APPLICATION]: 'Which department?',
         [FormType.ADD_DROP_COURSE]: '',
       },
       'email': {
-        [FormType.CHANGE_OF_MAJOR]: '📧 What is your email address?',
-        [FormType.GRADUATION_APPLICATION]: '📧 What is your email address?',
-        [FormType.ADD_DROP_COURSE]: '📧 What is your email address?',
+        [FormType.CHANGE_OF_MAJOR]: 'What\'s the best email to reach you at? 📧',
+        [FormType.GRADUATION_APPLICATION]: 'What\'s the best email to reach you at? 📧',
+        [FormType.ADD_DROP_COURSE]: 'What\'s the best email to reach you at? 📧',
       },
       'phone': {
-        [FormType.CHANGE_OF_MAJOR]: '📱 What is your phone number? (optional)',
-        [FormType.GRADUATION_APPLICATION]: '📱 What is your phone number? (optional)',
-        [FormType.ADD_DROP_COURSE]: '📱 What is your phone number? (optional)',
+        [FormType.CHANGE_OF_MAJOR]: 'Got a phone number? (Totally optional)',
+        [FormType.GRADUATION_APPLICATION]: 'Got a phone number? (Totally optional)',
+        [FormType.ADD_DROP_COURSE]: 'Got a phone number? (Totally optional)',
       },
       'reason': {
-        [FormType.CHANGE_OF_MAJOR]: '💭 Could you briefly explain your reason for changing majors?',
+        [FormType.CHANGE_OF_MAJOR]: 'Finally, could you share why you want to make this change? Just a quick explanation is fine! 💭',
         [FormType.GRADUATION_APPLICATION]: '',
-        [FormType.ADD_DROP_COURSE]: '💭 What is the reason for adding/dropping these courses? (optional)',
+        [FormType.ADD_DROP_COURSE]: 'Mind sharing why you\'re making these course changes? (Optional)',
       },
     };
 
