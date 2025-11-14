@@ -72,13 +72,13 @@ export class DeadlineService {
     const daysUntilDeadline = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     
     if (daysUntilDeadline < 0) {
-      return `⚠️ **Deadline passed** (${Math.abs(daysUntilDeadline)} days ago)`;
+      return `**Deadline passed** (${Math.abs(daysUntilDeadline)} days ago)`;
     } else if (daysUntilDeadline === 0) {
-      return `🔴 **Deadline is TODAY!**`;
+      return `**Deadline is TODAY**`;
     } else if (daysUntilDeadline <= 7) {
-      return `⏰ **Deadline in ${daysUntilDeadline} days** (${deadline.toLocaleDateString()})`;
+      return `**Deadline in ${daysUntilDeadline} days** (${deadline.toLocaleDateString()})`;
     } else {
-      return `📅 Deadline: ${deadline.toLocaleDateString()} (${daysUntilDeadline} days remaining)`;
+      return `Deadline: ${deadline.toLocaleDateString()} (${daysUntilDeadline} days remaining)`;
     }
   }
 }

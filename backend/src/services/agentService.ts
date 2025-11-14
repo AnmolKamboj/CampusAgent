@@ -44,13 +44,13 @@ export class AgentService {
 
   // Generate welcome message
   async generateWelcome(): Promise<string> {
-    const welcome = `👋 Hello! I'm your Smart PDF Form Assistant. I'm here to help you fill out any PDF form quickly and easily.\n\n` +
+    const welcome = `Hello! I'm your Smart PDF Form Assistant. I'm here to help you fill out any PDF form quickly and easily.\n\n` +
       `Here's how it works:\n` +
-      `1. **Upload your PDF form** using the 📎 attachment button\n` +
+      `1. Upload your PDF form using the attachment button\n` +
       `2. I'll analyze the form and find all the fields that need to be filled\n` +
       `3. I'll ask you questions to collect the information\n` +
-      `4. You'll get a completed PDF ready to submit!\n\n` +
-      `Let's get started! Please upload your PDF form. 📄`;
+      `4. You'll get a completed PDF ready to submit\n\n` +
+      `Let's get started! Please upload your PDF form.`;
     
     return welcome;
   }
@@ -208,8 +208,8 @@ export class AgentService {
       }
       
       responseMessage += `\nYou can now:\n` +
-        `📄 Click "Download PDF" to get your filled form\n` +
-        `📧 Click "Generate Email" to create a submission email`;
+        `• Click "Download PDF" to get your filled form\n` +
+        `• Click "Generate Email" to create a submission email`;
     } else if (nextField) {
       // ALWAYS build a conversational response - acknowledge what they said
       responseMessage = await this.buildConversationalResponse(
@@ -280,7 +280,7 @@ Provide a brief analysis.`;
       /^(hi|hello|hey|greetings|good morning|good afternoon|good evening|sup|yo|wassup|what's up|whats up)$/i,
       /^(thanks|thank you|ty|thx|appreciate it|cool|ok|okay|alright|nice|great)$/i,
       /^(yes|no|yeah|nah|yep|nope|sure|fine)$/i,
-      /^(lol|haha|hehe|lmao|xd|😂|😄|😊)$/i,
+      /^(lol|haha|hehe|lmao|xd)$/i,
       /^(how are you|what's up|whats up)$/i,
     ];
     
@@ -431,17 +431,17 @@ Provide a brief analysis.`;
     if (Object.keys(extractedData).length === 0) {
       // No data extracted - handle conversational messages
       if (/^(hi|hello|hey|greetings|good morning|good afternoon|good evening)/.test(lowerMessage)) {
-        acknowledgment = '👋 Hello there! Nice to meet you! ';
+        acknowledgment = 'Hello! Nice to meet you. ';
       } else if (/^(thanks|thank you|ty|thx|appreciate)/.test(lowerMessage)) {
-        acknowledgment = '😊 You\'re very welcome! Happy to help! ';
+        acknowledgment = 'You\'re welcome! Happy to help. ';
       } else if (/(how are you|what's up|whats up|wassup)/.test(lowerMessage)) {
-        acknowledgment = '😊 I\'m doing great, thanks for asking! ';
+        acknowledgment = 'I\'m doing great, thanks for asking! ';
       } else if (/(joke|funny|laugh|lol|haha|hehe)/.test(lowerMessage)) {
-        acknowledgment = '😄 Haha, I love your energy! ';
+        acknowledgment = 'Haha, I appreciate your energy! ';
       } else if (/(confused|don't understand|what|huh|help)/.test(lowerMessage)) {
-        acknowledgment = '🤔 No worries at all! I\'m here to help make this easy for you. ';
+        acknowledgment = 'No worries at all! I\'m here to help make this easy for you. ';
       } else if (lowerMessage.length < 10) {
-        acknowledgment = '😊 Got it! ';
+        acknowledgment = 'Got it! ';
       } else {
         acknowledgment = 'I hear you! ';
       }
