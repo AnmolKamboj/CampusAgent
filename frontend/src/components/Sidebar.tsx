@@ -1,5 +1,5 @@
 import { FormData } from '../types';
-import { FileText, Mail, PlusCircle, Download, AlertCircle, Upload } from 'lucide-react';
+import { FileText, Mail, Download, Plus, X } from 'lucide-react';
 
 interface SidebarProps {
   formData: FormData;
@@ -8,9 +8,10 @@ interface SidebarProps {
   onGenerateEmail: () => void;
   isLoading: boolean;
   pdfUploaded: boolean;
+  onClose: () => void;
 }
 
-function Sidebar({ formData, onStartNew, onDownloadPdf, onGenerateEmail, isLoading, pdfUploaded }: SidebarProps) {
+function Sidebar({ formData, onStartNew, onDownloadPdf, onGenerateEmail, isLoading, pdfUploaded, onClose }: SidebarProps) {
   const hasData = () => {
     return Object.keys(formData).length > 0;
   };
@@ -18,12 +19,12 @@ function Sidebar({ formData, onStartNew, onDownloadPdf, onGenerateEmail, isLoadi
   const renderFormFields = () => {
     if (!hasData()) {
       return (
-        <div className="text-center text-gray-500 text-sm py-8">
-          {pdfUploaded ? (
-            <p>Answer questions in the chat to fill the form</p>
-          ) : (
-            <p>Upload a PDF to get started</p>
-          )}
+        <div className="text-center text-gray-500 text-sm py-12 px-4">
+          <div className="glass-card p-6">
+            <p className="text-gray-400">
+              {pdfUploaded ? 'Answer questions to populate fields' : 'Upload a PDF document to begin'}
+            </p>
+          </div>
         </div>
       );
     }
@@ -39,30 +40,42 @@ function Sidebar({ formData, onStartNew, onDownloadPdf, onGenerateEmail, isLoadi
   };
 
   return (
-    <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
+    <div className="w-72 sidebar-glass flex flex-col h-full">
       {/* Header */}
-      <div className="p-6 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-900">PDF Form Assistant</h2>
-        <p className="text-sm text-gray-600 mt-1">
-          {pdfUploaded ? 'Form Uploaded ✓' : 'Upload PDF to start'}
-        </p>
+      <div className="p-4 border-b border-white/5 flex items-start justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-100 tracking-tight">Form Assistant</h2>
+          <p className="text-sm text-gray-400 mt-1">
+            {pdfUploaded ? (
+              <span className="text-blue-400">Document loaded</span>
+            ) : (
+              'No document'
+            )}
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+        >
+          <X size={20} className="text-gray-400" />
+        </button>
       </div>
 
       {/* Actions */}
-      <div className="p-6 space-y-3">
+      <div className="p-4 space-y-2">
         <button
           onClick={onStartNew}
           disabled={isLoading}
-          className="btn-secondary w-full flex items-center justify-center space-x-2"
+          className="btn-secondary w-full flex items-center justify-center space-x-2 glow-on-hover"
         >
-          <PlusCircle size={18} />
-          <span>Start New Form</span>
+          <Plus size={18} />
+          <span>New Session</span>
         </button>
 
         <button
           onClick={onDownloadPdf}
           disabled={isLoading || !pdfUploaded || !hasData()}
-          className="btn-primary w-full flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="btn-primary w-full flex items-center justify-center space-x-2"
         >
           <Download size={18} />
           <span>Download PDF</span>
@@ -71,46 +84,33 @@ function Sidebar({ formData, onStartNew, onDownloadPdf, onGenerateEmail, isLoadi
         <button
           onClick={onGenerateEmail}
           disabled={isLoading || !pdfUploaded || !hasData()}
-          className="btn-secondary w-full flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="btn-secondary w-full flex items-center justify-center space-x-2"
         >
           <Mail size={18} />
           <span>Generate Email</span>
         </button>
-
-        {!pdfUploaded && (
-          <div className="flex items-start space-x-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <Upload size={16} className="text-blue-600 mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-blue-800">
-              Upload a PDF form using the 📎 button in the chat to get started!
-            </p>
-          </div>
-        )}
-        
-        {pdfUploaded && !hasData() && (
-          <div className="flex items-start space-x-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <AlertCircle size={16} className="text-yellow-600 mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-yellow-800">
-              Answer the questions in the chat to fill out your form.
-            </p>
-          </div>
-        )}
       </div>
 
       {/* Form Progress */}
-      <div className="flex-1 p-6 border-t border-gray-200 overflow-y-auto">
-        <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center">
-          <FileText size={16} className="mr-2" />
-          Collected Information
-        </h3>
+      <div className="flex-1 p-4 border-t border-white/5 overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-medium text-gray-300 flex items-center">
+            <FileText size={16} className="mr-2" />
+            Form Data
+          </h3>
+          {hasData() && (
+            <span className="text-xs text-blue-400">{Object.keys(formData).length} fields</span>
+          )}
+        </div>
         
-        <div className="space-y-3">
+        <div className="space-y-2">
           {renderFormFields()}
         </div>
       </div>
 
       {/* Footer */}
-      <div className="p-6 border-t border-gray-200 text-xs text-gray-500">
-        <p>Powered by AI</p>
+      <div className="p-4 border-t border-white/5">
+        <p className="text-xs text-gray-500 text-center">Powered by AI</p>
       </div>
     </div>
   );
@@ -123,13 +123,13 @@ interface FormFieldProps {
 
 function FormField({ label, value }: FormFieldProps) {
   return (
-    <div className="bg-gray-50 rounded-lg p-3">
-      <p className="text-xs font-medium text-gray-600 mb-1">{label}</p>
-      <p className="text-sm text-gray-900">
+    <div className="glass-card p-3 transition-all duration-300 hover:scale-[1.02]">
+      <p className="text-xs font-medium text-gray-400 mb-1">{label}</p>
+      <p className="text-sm text-gray-200">
         {value !== undefined && value !== '' ? (
           String(value)
         ) : (
-          <span className="text-gray-400 italic">Not provided yet</span>
+          <span className="text-gray-500 italic">Not provided</span>
         )}
       </p>
     </div>

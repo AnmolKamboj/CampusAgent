@@ -11,6 +11,7 @@ function App() {
   const [formData, setFormData] = useState<FormData>({});
   const [isLoading, setIsLoading] = useState(false);
   const [pdfUploaded, setPdfUploaded] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     startNewSession();
@@ -176,21 +177,42 @@ function App() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar
-        formData={formData}
-        onStartNew={handleStartNew}
-        onDownloadPdf={handleDownloadPdf}
-        onGenerateEmail={handleGenerateEmail}
-        isLoading={isLoading}
-        pdfUploaded={pdfUploaded}
-      />
-      <ChatContainer
-        messages={messages}
-        onSendMessage={handleSendMessage}
-        onFileUpload={handleFileUpload}
-        isLoading={isLoading}
-      />
+    <div className="flex h-screen overflow-hidden relative">
+      {/* Sidebar - Collapsible */}
+      <div 
+        className={`fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <Sidebar
+          formData={formData}
+          onStartNew={handleStartNew}
+          onDownloadPdf={handleDownloadPdf}
+          onGenerateEmail={handleGenerateEmail}
+          isLoading={isLoading}
+          pdfUploaded={pdfUploaded}
+          onClose={() => setSidebarOpen(false)}
+        />
+      </div>
+      
+      {/* Backdrop */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col">
+        <ChatContainer
+          messages={messages}
+          onSendMessage={handleSendMessage}
+          onFileUpload={handleFileUpload}
+          isLoading={isLoading}
+          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+        />
+      </div>
     </div>
   );
 }
