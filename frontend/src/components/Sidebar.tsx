@@ -1,5 +1,5 @@
 import { FormData } from '../types';
-import { FileText, Mail, Download, Plus } from 'lucide-react';
+import { FileText, Mail, Download, Plus, X } from 'lucide-react';
 
 interface SidebarProps {
   formData: FormData;
@@ -8,9 +8,10 @@ interface SidebarProps {
   onGenerateEmail: () => void;
   isLoading: boolean;
   pdfUploaded: boolean;
+  onClose: () => void;
 }
 
-function Sidebar({ formData, onStartNew, onDownloadPdf, onGenerateEmail, isLoading, pdfUploaded }: SidebarProps) {
+function Sidebar({ formData, onStartNew, onDownloadPdf, onGenerateEmail, isLoading, pdfUploaded, onClose }: SidebarProps) {
   const hasData = () => {
     return Object.keys(formData).length > 0;
   };
@@ -39,17 +40,25 @@ function Sidebar({ formData, onStartNew, onDownloadPdf, onGenerateEmail, isLoadi
   };
 
   return (
-    <div className="w-80 sidebar-glass flex flex-col">
+    <div className="w-72 sidebar-glass flex flex-col h-full">
       {/* Header */}
-      <div className="p-6 border-b border-white/5">
-        <h2 className="text-lg font-semibold text-gray-100 tracking-tight">Form Assistant</h2>
-        <p className="text-sm text-gray-400 mt-1">
-          {pdfUploaded ? (
-            <span className="text-blue-400">Document loaded</span>
-          ) : (
-            'No document'
-          )}
-        </p>
+      <div className="p-4 border-b border-white/5 flex items-start justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-100 tracking-tight">Form Assistant</h2>
+          <p className="text-sm text-gray-400 mt-1">
+            {pdfUploaded ? (
+              <span className="text-blue-400">Document loaded</span>
+            ) : (
+              'No document'
+            )}
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+        >
+          <X size={20} className="text-gray-400" />
+        </button>
       </div>
 
       {/* Actions */}

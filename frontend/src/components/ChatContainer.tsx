@@ -2,15 +2,17 @@ import { useEffect, useRef } from 'react';
 import { Message } from '../types';
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
+import { Menu } from 'lucide-react';
 
 interface ChatContainerProps {
   messages: Message[];
   onSendMessage: (content: string) => void;
   onFileUpload: (file: File) => void;
   isLoading: boolean;
+  onToggleSidebar: () => void;
 }
 
-function ChatContainer({ messages, onSendMessage, onFileUpload, isLoading }: ChatContainerProps) {
+function ChatContainer({ messages, onSendMessage, onFileUpload, isLoading, onToggleSidebar }: ChatContainerProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -22,15 +24,24 @@ function ChatContainer({ messages, onSendMessage, onFileUpload, isLoading }: Cha
   }, [messages]);
 
   return (
-    <div className="flex-1 flex flex-col bg-[#0a0a0a]">
+    <div className="flex flex-col h-screen">
       {/* Header */}
-      <div className="header-glass px-6 py-4">
-        <h1 className="text-xl font-semibold text-gray-100 tracking-tight">CampusAgent</h1>
-        <p className="text-sm text-gray-400">AI-powered form assistant</p>
+      <div className="header-glass px-4 py-4 flex items-center space-x-4 flex-shrink-0">
+        <button
+          onClick={onToggleSidebar}
+          className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+        >
+          <Menu size={20} className="text-gray-400" />
+        </button>
+        <div>
+          <h1 className="text-xl font-semibold text-gray-100 tracking-tight">CampusAgent</h1>
+          <p className="text-sm text-gray-400">AI-powered form assistant</p>
+        </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-8 space-y-6">
+      {/* Messages - Centered like ChatGPT */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center max-w-md">
@@ -72,10 +83,15 @@ function ChatContainer({ messages, onSendMessage, onFileUpload, isLoading }: Cha
           </div>
         )}
         <div ref={messagesEndRef} />
+        </div>
       </div>
 
-      {/* Input */}
-      <ChatInput onSendMessage={onSendMessage} onFileUpload={onFileUpload} isLoading={isLoading} />
+      {/* Input - Centered */}
+      <div className="border-t border-white/5 flex-shrink-0">
+        <div className="max-w-3xl mx-auto">
+          <ChatInput onSendMessage={onSendMessage} onFileUpload={onFileUpload} isLoading={isLoading} />
+        </div>
+      </div>
     </div>
   );
 }
