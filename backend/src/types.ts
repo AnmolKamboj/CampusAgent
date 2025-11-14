@@ -96,13 +96,15 @@ export interface ChatResponse {
 export interface SessionState {
   sessionId: string;
   formData: FormData | DynamicFormData;
-  formType: FormType | string; // Supports both FormType enum and template ID (string)
+  formType?: FormType | string; // Supports both FormType enum and template ID (string)
   conversationHistory: ConversationMessage[];
   currentStep: string;
   isComplete: boolean;
   studentData?: StudentData;
   deadline?: Date;
   language?: string; // For multilingual support
+  uploadedPdf?: Buffer; // Store the uploaded PDF buffer
+  pdfAnalysis?: PdfAnalysisResult; // Store the analysis result
 }
 
 export interface ConversationMessage {
@@ -167,12 +169,11 @@ export interface FormField {
 
 // PDF Analysis Result
 export interface PdfAnalysisResult {
+  formTitle: string;
   fields: FormField[];
   requiredFields: string[];
-  optionalFields: string[];
-  formType: string;
-  description: string;
-  confidence: number;         // AI confidence in analysis
+  success: boolean;
+  message?: string;
 }
 
 // Extended FormData to support dynamic forms

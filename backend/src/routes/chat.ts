@@ -1,85 +1,85 @@
 import express from 'express';
+import multer from 'multer';
 import { agentService } from '../services/agentService.js';
-import { ChatRequest, FormType } from '../types.js';
-import { formConfigService } from '../services/formConfigService.js';
-import { formTemplateService } from '../services/formTemplateService.js';
+import { pdfAnalysisService } from '../services/pdfAnalysisService.js';
+import { ChatRequest } from '../types.js';
 
 const router = express.Router();
 
-// Get available forms (both hardcoded and uploaded templates)
-router.get('/forms', (_req, res) => {
-  try {
-    // Get hardcoded forms
-    const hardcodedForms = formConfigService.getAllConfigs();
-    
-    // Get active uploaded templates
-    const templates = formTemplateService.getActiveTemplates();
-    
-    // Combine both types of forms
-    const allForms = [
-      ...hardcodedForms.map(form => ({
-        ...form,
-        isTemplate: false,
-      })),
-      ...templates.map(template => ({
-        type: template.id, // Use template ID as type identifier
-        name: template.name,
-        description: template.description || '',
-        requiredFields: template.requiredFields,
-        optionalFields: template.optionalFields,
-        isTemplate: true,
-        templateId: template.id,
-      })),
-    ];
-    
-    res.json({ forms: allForms });
-  } catch (error) {
-    console.error('Error getting forms:', error);
-    res.status(500).json({ error: 'Failed to get forms' });
-  }
+// Configure multer for in-memory file uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF files are allowed'));
+    }
+  },
 });
 
-// Start new chat session (supports both FormType and template ID)
-router.post('/start', async (req, res) => {
+// Start new chat session
+router.post('/start', async (_req, res) => {
   try {
-    const { formType } = req.body;
-    // Check if it's a template ID (UUID format) or FormType enum
-    let formTypeToUse: FormType | string | undefined;
-    
-    if (formType) {
-      // Check if it's a UUID (template ID)
-      if (typeof formType === 'string' && formType.length === 36 && formType.includes('-')) {
-        formTypeToUse = formType;
-      } else {
-        // Try to parse as FormType enum
-        formTypeToUse = FormType[formType as unknown as keyof typeof FormType] || formType;
-      }
-    }
-    
-    const welcomeMessage = await agentService.generateWelcome(formTypeToUse);
-    res.json({ message: welcomeMessage, formType: formTypeToUse });
+    const welcomeMessage = await agentService.generateWelcome();
+    res.json({ message: welcomeMessage });
   } catch (error) {
     console.error('Error starting chat:', error);
     res.status(500).json({ error: 'Failed to start chat session' });
   }
 });
 
+// Upload and analyze PDF
+router.post('/upload', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const { sessionId } = req.body;
+    if (!sessionId) {
+      return res.status(400).json({ error: 'sessionId is required' });
+    }
+
+    // Analyze the PDF
+    const analysis = await pdfAnalysisService.analyzePdf(req.file.buffer);
+
+    if (!analysis.success) {
+      return res.status(400).json({ 
+        error: analysis.message || 'Failed to analyze PDF' 
+      });
+    }
+
+    // Store the PDF and analysis in the session
+    await agentService.storePdfInSession(sessionId, req.file.buffer, analysis);
+
+    res.json({
+      success: true,
+      message: `Great! I analyzed your PDF and found ${analysis.fields.length} fields to fill. Let's get started!`,
+      analysis,
+    });
+  } catch (error) {
+    console.error('Error uploading PDF:', error);
+    res.status(500).json({ error: 'Failed to upload and analyze PDF' });
+  }
+});
+
 // Process chat message
 router.post('/', async (req, res) => {
   try {
-    const { sessionId, message, formData, formType, useAutoFill }: ChatRequest = req.body;
+    const { sessionId, message, formData }: ChatRequest = req.body;
 
     if (!sessionId || !message) {
       return res.status(400).json({ error: 'sessionId and message are required' });
     }
 
-    const formTypeEnum = formType ? (FormType[formType as unknown as keyof typeof FormType] || undefined) : undefined;
     const response = await agentService.processMessage(
       sessionId,
       message,
-      formData || {},
-      formTypeEnum,
-      useAutoFill
+      formData || {}
     );
 
     return res.json(response);

@@ -1,9 +1,5 @@
 import { getModel } from '../config/ai.js';
-import { FormData, SessionState, FormType, ChangeOfMajorData, AddDropCourseData, DynamicFormData } from '../types.js';
-import { formConfigService } from './formConfigService.js';
-import { studentDataService } from './studentDataService.js';
-import { deadlineService } from './deadlineService.js';
-import { formTemplateService } from './formTemplateService.js';
+import { FormData, SessionState, DynamicFormData, FormField } from '../types.js';
 
 // In-memory session storage (replace with Redis/DB in production)
 const sessions = new Map<string, SessionState>();
@@ -15,14 +11,13 @@ export class AgentService {
     this.model = getModel();
   }
 
-  // Initialize a new session with form type (supports both FormType and template ID)
-  initSession(sessionId: string, formType?: FormType | string): SessionState {
+  // Initialize a new session
+  initSession(sessionId: string): SessionState {
     const session: SessionState = {
       sessionId,
       formData: {},
-      formType: formType || FormType.CHANGE_OF_MAJOR, // Now supports string (template ID) or FormType
       conversationHistory: [],
-      currentStep: 'greeting',
+      currentStep: 'waiting_for_pdf',
       isComplete: false,
     };
     sessions.set(sessionId, session);
@@ -34,128 +29,54 @@ export class AgentService {
     return sessions.get(sessionId);
   }
 
-  // Generate welcome message (supports both FormType and template ID)
-  async generateWelcome(formType?: FormType | string): Promise<string> {
-    if (!formType) {
-      // Get all available forms (hardcoded + templates)
-      const hardcodedForms = formConfigService.getAllConfigs();
-      const templates = formTemplateService.getActiveTemplates();
-      
-      let welcome = `👋 Hello! I'm your Smart Academic Form & Process Assistant. I can help you with:\n\n`;
-      
-      // List hardcoded forms
-      hardcodedForms.forEach((form, idx) => {
-        welcome += `${idx + 1}. **${form.name}** - ${form.description}\n`;
-      });
-      
-      // List template forms
-      templates.forEach((template, idx) => {
-        welcome += `${hardcodedForms.length + idx + 1}. **${template.name}** - ${template.description || 'Custom form'}\n`;
-      });
-      
-      welcome += `\nWhich form would you like to fill out? (Type the number or form name)`;
-      return welcome;
+  // Store uploaded PDF and its analysis in session
+  async storePdfInSession(sessionId: string, pdfBuffer: Buffer, analysis: any): Promise<void> {
+    let session = this.getSession(sessionId);
+    if (!session) {
+      session = this.initSession(sessionId);
     }
+    
+    session.uploadedPdf = pdfBuffer;
+    session.pdfAnalysis = analysis;
+    session.currentStep = 'collecting_data';
+    sessions.set(sessionId, session);
+  }
 
-    // Check if it's a template ID (UUID format)
-    const isTemplate = typeof formType === 'string' && formType.length === 36 && formType.includes('-');
-    
-    if (isTemplate) {
-      // Handle template-based form
-      const template = formTemplateService.getTemplate(formType);
-      if (!template) {
-        return `Sorry, I couldn't find that form. Please try again.`;
-      }
-      
-      let welcome = `👋 Hello! I'm your Smart Academic Form & Process Assistant. I'm here to help you fill out your **${template.name}** form.\n\n`;
-      welcome += `${template.description || 'Custom form'}\n\n`;
-      welcome += `I'll guide you through the process step by step and collect all the necessary information. Once we're done, I can generate a filled PDF and an email draft for you.\n\n`;
-      
-      // Start with the first required field
-      const requiredFields = template.requiredFields || [];
-      if (requiredFields.length > 0) {
-        const firstFieldName = requiredFields[0];
-        const firstField = template.fields.find(f => f.name === firstFieldName);
-        const question = firstField?.question || `Could you please provide ${firstField?.label || firstFieldName}?`;
-        welcome += question;
-      }
-      
-      return welcome;
-    }
-
-    // Handle hardcoded form
-    const formTypeEnum = formType as FormType;
-    const config = formConfigService.getConfig(formTypeEnum);
-    const deadlineMsg = deadlineService.getDeadlineStatusMessage(formTypeEnum);
-    
-    let welcome = `👋 Hello! I'm your Smart Academic Form & Process Assistant. I'm here to help you fill out your **${config?.name}** form.\n\n`;
-    welcome += `${config?.description}\n\n`;
-    
-    if (deadlineMsg) {
-      welcome += `${deadlineMsg}\n\n`;
-    }
-    
-    welcome += `I'll guide you through the process step by step and collect all the necessary information. Once we're done, I can generate a filled PDF and an email draft for you.\n\n`;
-    
-    // Start with the first required field instead of form-specific question
-    const requiredFields = config?.requiredFields || [];
-    if (requiredFields.length > 0) {
-      const firstField = requiredFields[0];
-      const question = await this.generateNextQuestion(firstField, {}, formTypeEnum);
-      welcome += question;
-    }
+  // Generate welcome message
+  async generateWelcome(): Promise<string> {
+    const welcome = `👋 Hello! I'm your Smart PDF Form Assistant. I'm here to help you fill out any PDF form quickly and easily.\n\n` +
+      `Here's how it works:\n` +
+      `1. **Upload your PDF form** using the 📎 attachment button\n` +
+      `2. I'll analyze the form and find all the fields that need to be filled\n` +
+      `3. I'll ask you questions to collect the information\n` +
+      `4. You'll get a completed PDF ready to submit!\n\n` +
+      `Let's get started! Please upload your PDF form. 📄`;
     
     return welcome;
   }
 
-  // Process user message and generate response (supports both FormType and template ID)
+  // Process user message and generate response
   async processMessage(
     sessionId: string,
     userMessage: string,
-    currentFormData: FormData | DynamicFormData,
-    formType?: FormType | string,
-    useAutoFill?: boolean
-  ): Promise<{ message: string; formData: FormData | DynamicFormData; isComplete: boolean; formType: FormType | string; deadline?: Date; deadlineWarning?: boolean }> {
+    currentFormData: FormData | DynamicFormData
+  ): Promise<{ message: string; formData: FormData | DynamicFormData; isComplete: boolean }> {
     let session = this.getSession(sessionId);
     if (!session) {
-      session = this.initSession(sessionId, formType);
+      session = this.initSession(sessionId);
     }
 
-    // Handle form type selection if not set
-    if (!session.formType && !formType) {
-      const selectedFormType = this.detectFormType(userMessage);
-      if (selectedFormType) {
-        session.formType = selectedFormType;
-        const welcome = await this.generateWelcome(selectedFormType);
-        return {
-          message: welcome,
-          formData: session.formData,
-          isComplete: false,
-          formType: selectedFormType,
-        };
-      }
-    }
-
-    // Set form type if provided
-    if (formType && !session.formType) {
-      session.formType = formType;
+    // Check if PDF has been uploaded
+    if (!session.pdfAnalysis) {
+      return {
+        message: `I haven't received a PDF form yet. Please upload your PDF form using the 📎 attachment button so I can help you fill it out!`,
+        formData: session.formData,
+        isComplete: false,
+      };
     }
 
     // Merge current form data from frontend with session form data
-    // This ensures we don't lose any previously collected information
     const mergedFormData = { ...session.formData, ...currentFormData };
-
-    // Auto-fill if requested and student ID is available
-    // Only auto-fill for hardcoded forms (FormType enum), not template-based forms
-    if (useAutoFill && mergedFormData.studentId && typeof session.formType !== 'string') {
-      const autoFilled = await studentDataService.autoFillFormData(
-        session.formType as FormType,
-        mergedFormData.studentId,
-        true,
-        mergedFormData
-      );
-      Object.assign(mergedFormData, autoFilled);
-    }
 
     // Update conversation history
     session.conversationHistory.push({
@@ -170,7 +91,7 @@ export class AgentService {
     const actionResult = await this.act(planResult);
     const reflectionResult = await this.reflect(actionResult);
 
-    // Update session with merged form data (ensure we keep all extracted data)
+    // Update session with merged form data
     session.formData = { ...session.formData, ...reflectionResult.formData };
     session.conversationHistory.push({
       role: 'agent',
@@ -181,40 +102,15 @@ export class AgentService {
     // Ensure formData in response includes all session data
     reflectionResult.formData = session.formData;
 
-    // Check deadline (only for hardcoded forms, not template-based)
-    let deadline: Date | null = null;
-    let deadlineWarning = false;
-    if (typeof session.formType !== 'string') {
-      deadline = deadlineService.getDeadline(session.formType as FormType);
-      deadlineWarning = deadline ? deadlineService.checkDeadlineWarning(session.formType as FormType, 7) : false;
-    }
-
     sessions.set(sessionId, session);
 
     return {
       message: reflectionResult.message,
       formData: session.formData,
       isComplete: reflectionResult.isComplete,
-      formType: session.formType,
-      deadline: deadline || undefined,
-      deadlineWarning,
     };
   }
 
-  // Detect form type from user message
-  private detectFormType(message: string): FormType | null {
-    const lower = message.toLowerCase();
-    if (lower.includes('change of major') || lower.includes('change major') || lower.includes('switch major') || message === '1') {
-      return FormType.CHANGE_OF_MAJOR;
-    }
-    if (lower.includes('graduation') || lower.includes('graduate') || message === '2') {
-      return FormType.GRADUATION_APPLICATION;
-    }
-    if (lower.includes('add') && lower.includes('drop') || lower.includes('add/drop') || message === '3') {
-      return FormType.ADD_DROP_COURSE;
-    }
-    return null;
-  }
 
   // REASON: Understand user intent and extract information
   private async reason(
@@ -245,26 +141,17 @@ export class AgentService {
     }
   }
 
-  // PLAN: Determine next steps (this will be recalculated after extraction)
+  // PLAN: Determine next steps based on PDF analysis
   private async plan(reasoningResult: any): Promise<any> {
     const { session, formData } = reasoningResult;
-    const formType = session.formType || FormType.CHANGE_OF_MAJOR;
-
-    // Determine what fields are required for this form type
-    let requiredFields: string[] = ['studentName', 'studentId'];
     
-    if (formType === FormType.CHANGE_OF_MAJOR) {
-      requiredFields = ['studentName', 'studentId', 'currentMajor', 'desiredMajor', 'advisorName'];
-    } else if (formType === FormType.GRADUATION_APPLICATION) {
-      requiredFields = ['studentName', 'studentId', 'expectedGraduationDate', 'degreeType'];
-    } else if (formType === FormType.ADD_DROP_COURSE) {
-      requiredFields = ['studentName', 'studentId', 'courseAction', 'courseName', 'courseCode'];
-    }
+    // Get required fields from PDF analysis
+    const requiredFields = session.pdfAnalysis?.requiredFields || [];
     
     // Determine what field we should be asking for next (before extraction)
     let nextField = null;
     for (const field of requiredFields) {
-      if (!formData[field] || (formData[field] && formData[field].trim() === '')) {
+      if (!formData[field] || (typeof formData[field] === 'string' && formData[field].trim() === '')) {
         nextField = field;
         break;
       }
@@ -272,47 +159,32 @@ export class AgentService {
 
     return {
       ...reasoningResult,
-      formType,
       nextField,  // What field we're currently asking for
-      missingFields: requiredFields.filter(f => !formData[f] || formData[f].trim() === ''),
+      missingFields: requiredFields.filter((f: string) => !formData[f] || (typeof formData[f] === 'string' && formData[f].trim() === '')),
     };
   }
 
   // ACT: Generate response and extract data
   private async act(planResult: any): Promise<any> {
-    const { session, userMessage, formData, aiAnalysis, formType, nextField: askedField } = planResult;
+    const { session, userMessage, formData, aiAnalysis, nextField: askedField } = planResult;
     
     // Extract data from user message FIRST (pass askedField for context)
-    const extractedData = await this.extractFormData(userMessage, formData, aiAnalysis, formType, askedField);
+    const extractedData = await this.extractFormData(userMessage, formData, aiAnalysis, askedField);
     
     // Merge extracted data
     const updatedFormData = { ...formData, ...extractedData };
     
-    // NOW calculate missing fields AFTER extraction
-    // Check if this is a template-based form
-    const isTemplate = typeof formType === 'string' && formType.length === 36 && formType.includes('-');
-    let requiredFields: string[] = [];
-    let formName = 'form';
-    
-    if (isTemplate) {
-      const template = formTemplateService.getTemplate(formType);
-      if (template) {
-        requiredFields = template.requiredFields || [];
-        formName = template.name;
-      }
-    } else {
-      const config = formConfigService.getConfig(formType as FormType);
-      requiredFields = config?.requiredFields || [];
-      formName = config?.name || 'form';
-    }
+    // Get required fields from PDF analysis
+    const requiredFields = session.pdfAnalysis?.requiredFields || [];
+    const formName = session.pdfAnalysis?.formTitle || 'form';
     
     const missingFields: string[] = [];
     
-    for (const field of requiredFields) {
-      const value = (updatedFormData as any)[field];
+      for (const field of requiredFields) {
+      const value = (updatedFormData as any)[field as string];
       // Check if field is empty or just whitespace
       if (!value || (typeof value === 'string' && value.trim() === '')) {
-        missingFields.push(field);
+        missingFields.push(field as string);
       }
     }
     
@@ -324,52 +196,15 @@ export class AgentService {
     if (missingFields.length === 0) {
       responseMessage = `Perfect! I have all the information I need for your ${formName}.\n\n`;
       
-      // Show collected information based on form type
-      if (isTemplate) {
-        const template = formTemplateService.getTemplate(formType);
-        if (template) {
-          // Show all collected fields
-          template.fields.forEach(field => {
-            const value = (updatedFormData as any)[field.name];
-            if (value !== undefined && value !== null && value !== '') {
-              responseMessage += `✓ ${field.label}: ${value}\n`;
-            }
-          });
-        }
-      } else if (session.formType === FormType.CHANGE_OF_MAJOR) {
-        const data = updatedFormData as any;
-        responseMessage += `✓ Student Name: ${data.studentName}\n` +
-          `✓ Student ID: ${data.studentId}\n` +
-          `✓ Current Major: ${data.currentMajor}\n` +
-          `✓ Desired Major: ${data.desiredMajor}\n` +
-          `✓ Advisor: ${data.advisorName}\n` +
-          `✓ Department: ${data.department}\n` +
-          `✓ Email: ${data.email}\n`;
-        if (data.reason) responseMessage += `✓ Reason: ${data.reason}\n`;
-      } else if (session.formType === FormType.GRADUATION_APPLICATION) {
-        const data = updatedFormData as any;
-        responseMessage += `✓ Student Name: ${data.studentName}\n` +
-          `✓ Student ID: ${data.studentId}\n` +
-          `✓ Expected Graduation Date: ${data.expectedGraduationDate}\n` +
-          `✓ Degree Type: ${data.degreeType}\n` +
-          `✓ Major: ${data.major}\n`;
-        if (data.minor) responseMessage += `✓ Minor: ${data.minor}\n`;
-        if (data.honorsProgram) responseMessage += `✓ Honors Program: Yes\n`;
-        responseMessage += `✓ Advisor: ${data.advisorName}\n` +
-          `✓ Email: ${data.email}\n`;
-      } else if (session.formType === FormType.ADD_DROP_COURSE) {
-        const data = updatedFormData as any;
-        responseMessage += `✓ Student Name: ${data.studentName}\n` +
-          `✓ Student ID: ${data.studentId}\n` +
-          `✓ Semester: ${data.semester}\n` +
-          `✓ Year: ${data.year}\n`;
-        if (data.coursesToAdd?.length) {
-          responseMessage += `✓ Courses to Add: ${data.coursesToAdd.map((c: any) => c.courseCode).join(', ')}\n`;
-        }
-        if (data.coursesToDrop?.length) {
-          responseMessage += `✓ Courses to Drop: ${data.coursesToDrop.map((c: any) => c.courseCode).join(', ')}\n`;
-        }
-        responseMessage += `✓ Email: ${data.email}\n`;
+      // Show collected information from PDF fields
+      if (session.pdfAnalysis?.fields) {
+        session.pdfAnalysis.fields.forEach((field: FormField) => {
+          const value = (updatedFormData as any)[field.name];
+          if (value !== undefined && value !== null && value !== '') {
+            const label = field.label || field.name;
+            responseMessage += `✓ ${label}: ${value}\n`;
+          }
+        });
       }
       
       responseMessage += `\nYou can now:\n` +
@@ -381,8 +216,7 @@ export class AgentService {
         userMessage,
         extractedData, 
         nextField,
-        updatedFormData,
-        formType
+        session
       );
     } else {
       responseMessage = 'Hmm, I need a bit more information to complete your form. Could you help me fill in the remaining details?';
@@ -413,19 +247,8 @@ export class AgentService {
 
   // Helper: Build reasoning prompt
   private buildReasonPrompt(session: SessionState, userMessage: string, formData: FormData): string {
-    const formType = session.formType || FormType.CHANGE_OF_MAJOR;
-    // Only get config for hardcoded forms (FormType enum)
-    const config = typeof formType !== 'string' ? formConfigService.getConfig(formType as FormType) : null;
-    const formName = config?.name || 'form';
-    
-    let fieldList = '';
-    if (formType === FormType.CHANGE_OF_MAJOR) {
-      fieldList = 'studentName, studentId, currentMajor, desiredMajor, advisorName, department, email, phone, reason';
-    } else if (formType === FormType.GRADUATION_APPLICATION) {
-      fieldList = 'studentName, studentId, expectedGraduationDate, degreeType, major, minor, honorsProgram, thesisTitle, advisorName, department, email, phone';
-    } else if (formType === FormType.ADD_DROP_COURSE) {
-      fieldList = 'studentName, studentId, semester, year, coursesToAdd, coursesToDrop, reason, advisorName, email, phone';
-    }
+    const formName = session.pdfAnalysis?.formTitle || 'form';
+    const fieldList = session.pdfAnalysis?.requiredFields.join(', ') || 'form fields';
     
     return `You are an intelligent assistant helping a student fill out a "${formName}" form.
 
@@ -446,7 +269,6 @@ Provide a brief analysis.`;
     userMessage: string, 
     currentData: FormData, 
     _aiAnalysis: string,
-    formType?: FormType,
     nextFieldAsked?: string  // What field are we currently asking for?
   ): Promise<Partial<FormData>> {
     const extracted: Partial<FormData> = {};
@@ -481,20 +303,8 @@ Provide a brief analysis.`;
         }
       }
       
-      // If asking for currentMajor, treat response as current major
-      if (nextFieldAsked === 'currentMajor' && formType === FormType.CHANGE_OF_MAJOR) {
-        (extracted as any).currentMajor = trimmedMessage;
-        return extracted;
-      }
-      
-      // If asking for desiredMajor, treat response as desired major
-      if (nextFieldAsked === 'desiredMajor' && formType === FormType.CHANGE_OF_MAJOR) {
-        (extracted as any).desiredMajor = trimmedMessage;
-        return extracted;
-      }
-      
-      // If asking for email, advisorName, department, etc., use the response directly
-      if (nextFieldAsked === 'advisorName' || nextFieldAsked === 'department') {
+      // For any other field we're asking about, use the response directly
+      if (nextFieldAsked) {
         (extracted as any)[nextFieldAsked] = trimmedMessage;
         return extracted;
       }
@@ -561,66 +371,6 @@ Provide a brief analysis.`;
       }
     }
 
-    // Desired major (if not yet set) - only for Change of Major
-    if (formType === FormType.CHANGE_OF_MAJOR) {
-      const changeMajorData = currentData as ChangeOfMajorData;
-      if (!changeMajorData.desiredMajor || (changeMajorData.desiredMajor && changeMajorData.desiredMajor.trim() === '')) {
-        // Enhanced major detection - much more flexible
-        const majorKeywords = [
-          'computer science', 'biology', 'psychology', 'engineering', 'mathematics', 
-          'physics', 'chemistry', 'english', 'history', 'business', 'economics',
-          'cs', 'compsci', 'comp sci', 'computer', 'science', 'math', 'statistics',
-          'accounting', 'finance', 'marketing', 'management', 'nursing', 'education',
-          'master', 'bachelor', 'phd', 'doctorate', 'mba', 'ms', 'bs', 'ba', 'ma'
-        ];
-        
-        // Check if message contains major keywords - improved extraction
-        let foundMajor = false;
-        for (const keyword of majorKeywords) {
-          if (lowerMessage.includes(keyword)) {
-            // Just use the whole message as the major (includes "Master in Computer Science", etc.)
-            (extracted as ChangeOfMajorData).desiredMajor = trimmedMessage;
-            foundMajor = true;
-            break;
-          }
-        }
-        
-        // If no keyword match but message looks like a major name (capitalized words, 3+ words, no numbers)
-        // This handles things like "Software Engineering" or "Information Technology"
-        if (!foundMajor && 
-            /^[A-Z][a-zA-Z]+(\s+[A-Za-z]+)+$/.test(trimmedMessage) && 
-            !/\d/.test(trimmedMessage) &&
-            trimmedMessage.length > 5 &&
-            trimmedMessage.split(' ').length >= 2) {
-          (extracted as ChangeOfMajorData).desiredMajor = trimmedMessage;
-        }
-      }
-
-      // Current major (only for Change of Major)
-      if (!changeMajorData.currentMajor || (changeMajorData.currentMajor && changeMajorData.currentMajor.trim() === '')) {
-        if (lowerMessage.includes('current') || lowerMessage.includes('my major is') || lowerMessage.includes('i study')) {
-          // Try to extract the major after "current major is" or similar
-          const currentMajorPatterns = [
-            /current major is? ([a-zA-Z\s]+)/i,
-            /my major is ([a-zA-Z\s]+)/i,
-            /i study ([a-zA-Z\s]+)/i,
-          ];
-          
-          for (const pattern of currentMajorPatterns) {
-            const match = userMessage.match(pattern);
-            if (match && match[1]) {
-              (extracted as ChangeOfMajorData).currentMajor = match[1].trim();
-          break;
-            }
-          }
-          
-          // If no pattern match but contains "current", use the message
-          if (!(extracted as ChangeOfMajorData).currentMajor) {
-            (extracted as ChangeOfMajorData).currentMajor = trimmedMessage;
-          }
-        }
-      }
-    }
 
     // Email
     if (!currentData.email || (currentData.email && currentData.email.trim() === '')) {
@@ -664,40 +414,6 @@ Provide a brief analysis.`;
       }
     }
 
-    // Department (only for Change of Major and Graduation)
-    if (formType === FormType.CHANGE_OF_MAJOR || formType === FormType.GRADUATION_APPLICATION) {
-      const changeMajorData = currentData as ChangeOfMajorData;
-      if (!changeMajorData.department || (changeMajorData.department && changeMajorData.department.trim() === '')) {
-        if (lowerMessage.includes('department')) {
-          const deptPattern = /department is? ([a-zA-Z\s]+)/i;
-          const match = userMessage.match(deptPattern);
-          if (match && match[1]) {
-            (extracted as ChangeOfMajorData).department = match[1].trim();
-          } else {
-            (extracted as ChangeOfMajorData).department = trimmedMessage;
-          }
-        }
-      }
-    }
-
-    // Reason (usually longer text) - for Change of Major and Add/Drop Course
-    if (formType === FormType.CHANGE_OF_MAJOR || formType === FormType.ADD_DROP_COURSE) {
-      const changeMajorData = currentData as ChangeOfMajorData;
-      const addDropData = currentData as AddDropCourseData;
-      const reason = formType === FormType.CHANGE_OF_MAJOR ? changeMajorData.reason : addDropData.reason;
-      
-      if (!reason || (reason && reason.trim() === '')) {
-        // If message is longer and doesn't match other patterns, it might be a reason
-        if (userMessage.length > 20 && !extracted.studentName && !extracted.studentId && !extracted.email) {
-          if (formType === FormType.CHANGE_OF_MAJOR) {
-            (extracted as ChangeOfMajorData).reason = trimmedMessage;
-          } else {
-            (extracted as AddDropCourseData).reason = trimmedMessage;
-          }
-        }
-      }
-    }
-
     return extracted;
   }
 
@@ -706,8 +422,7 @@ Provide a brief analysis.`;
     userMessage: string,
     extractedData: Partial<FormData>,
     nextField: string,
-    formData: FormData,
-    formType?: FormType | string
+    session: SessionState
   ): Promise<string> {
     const lowerMessage = userMessage.toLowerCase().trim();
     let acknowledgment = '';
@@ -754,112 +469,25 @@ Provide a brief analysis.`;
     }
     
     // Now ask the next question naturally
-    const nextQuestion = await this.generateNextQuestion(nextField, formData, formType);
+    const nextQuestion = await this.generateNextQuestion(nextField, session);
     
     return acknowledgment + nextQuestion;
   }
 
-  // Helper: Generate next question (supports both FormType and template ID)
-  private async generateNextQuestion(nextField: string, _formData: FormData | DynamicFormData, formType?: FormType | string): Promise<string> {
-    // Check if it's a template
-    const isTemplate = typeof formType === 'string' && formType.length === 36 && formType.includes('-');
+  // Helper: Generate next question from PDF field analysis
+  private async generateNextQuestion(nextField: string, session: SessionState): Promise<string> {
+    // Get the field definition from PDF analysis
+    const field = session.pdfAnalysis?.fields.find(f => f.name === nextField);
     
-    if (isTemplate) {
-      const template = formTemplateService.getTemplate(formType);
-      if (template) {
-        const field = template.fields.find(f => f.name === nextField);
-        if (field && field.question) {
-          return field.question;
-        }
-        // Fallback for template fields without questions
-        return `Could you please provide ${field?.label || nextField}?`;
-      }
+    if (field && field.question) {
+      return field.question;
     }
     
-    // Hardcoded questions for hardcoded forms - natural and conversational
-    const formTypeEnum = formType as FormType;
-    const questions: Record<string, Record<FormType, string>> = {
-      'desiredMajor': {
-        [FormType.CHANGE_OF_MAJOR]: 'What major are you thinking of switching to? 🎓',
-        [FormType.GRADUATION_APPLICATION]: '',
-        [FormType.ADD_DROP_COURSE]: '',
-      },
-      'studentName': {
-        [FormType.CHANGE_OF_MAJOR]: 'What\'s your full name?',
-        [FormType.GRADUATION_APPLICATION]: 'What\'s your full name?',
-        [FormType.ADD_DROP_COURSE]: 'What\'s your full name?',
-      },
-      'studentId': {
-        [FormType.CHANGE_OF_MAJOR]: 'And what\'s your student ID? (You can include the Z if you have one)',
-        [FormType.GRADUATION_APPLICATION]: 'What\'s your student ID? (You can include the Z if you have one)',
-        [FormType.ADD_DROP_COURSE]: 'What\'s your student ID? (You can include the Z if you have one)',
-      },
-      'currentMajor': {
-        [FormType.CHANGE_OF_MAJOR]: 'What major are you in right now? 📚',
-        [FormType.GRADUATION_APPLICATION]: '',
-        [FormType.ADD_DROP_COURSE]: '',
-      },
-      'expectedGraduationDate': {
-        [FormType.CHANGE_OF_MAJOR]: '',
-        [FormType.GRADUATION_APPLICATION]: '📅 What is your expected graduation date? (e.g., "Spring 2024" or "May 2024")',
-        [FormType.ADD_DROP_COURSE]: '',
-      },
-      'degreeType': {
-        [FormType.CHANGE_OF_MAJOR]: '',
-        [FormType.GRADUATION_APPLICATION]: '🎓 What type of degree? (Bachelor\'s, Master\'s, Doctorate, etc.)',
-        [FormType.ADD_DROP_COURSE]: '',
-      },
-      'major': {
-        [FormType.CHANGE_OF_MAJOR]: '',
-        [FormType.GRADUATION_APPLICATION]: '📚 What is your major?',
-        [FormType.ADD_DROP_COURSE]: '',
-      },
-      'semester': {
-        [FormType.CHANGE_OF_MAJOR]: '',
-        [FormType.GRADUATION_APPLICATION]: '',
-        [FormType.ADD_DROP_COURSE]: '📅 What semester? (Fall, Spring, Summer)',
-      },
-      'year': {
-        [FormType.CHANGE_OF_MAJOR]: '',
-        [FormType.GRADUATION_APPLICATION]: '',
-        [FormType.ADD_DROP_COURSE]: '📅 What year? (e.g., 2024)',
-      },
-      'advisorName': {
-        [FormType.CHANGE_OF_MAJOR]: 'Who\'s your academic advisor? 👨‍🏫',
-        [FormType.GRADUATION_APPLICATION]: 'Who\'s your academic advisor? 👨‍🏫',
-        [FormType.ADD_DROP_COURSE]: 'Who\'s your academic advisor? 👨‍🏫',
-      },
-      'department': {
-        [FormType.CHANGE_OF_MAJOR]: 'Which department is that major in? (like "Computer Science Department")',
-        [FormType.GRADUATION_APPLICATION]: 'Which department?',
-        [FormType.ADD_DROP_COURSE]: '',
-      },
-      'email': {
-        [FormType.CHANGE_OF_MAJOR]: 'What\'s the best email to reach you at? 📧',
-        [FormType.GRADUATION_APPLICATION]: 'What\'s the best email to reach you at? 📧',
-        [FormType.ADD_DROP_COURSE]: 'What\'s the best email to reach you at? 📧',
-      },
-      'phone': {
-        [FormType.CHANGE_OF_MAJOR]: 'Got a phone number? (Totally optional)',
-        [FormType.GRADUATION_APPLICATION]: 'Got a phone number? (Totally optional)',
-        [FormType.ADD_DROP_COURSE]: 'Got a phone number? (Totally optional)',
-      },
-      'reason': {
-        [FormType.CHANGE_OF_MAJOR]: 'Finally, could you share why you want to make this change? Just a quick explanation is fine! 💭',
-        [FormType.GRADUATION_APPLICATION]: '',
-        [FormType.ADD_DROP_COURSE]: 'Mind sharing why you\'re making these course changes? (Optional)',
-      },
-    };
-
-    const formTypeToUse = formTypeEnum || FormType.CHANGE_OF_MAJOR;
-    const question = questions[nextField]?.[formTypeToUse];
+    // Generate a natural question from the field name or label
+    const label = field?.label || nextField;
+    const formattedLabel = label.replace(/([A-Z])/g, ' $1').toLowerCase().trim();
     
-    if (question) {
-      return question;
-    }
-    
-    // Fallback
-    return `Could you please provide your ${nextField.replace(/([A-Z])/g, ' $1').toLowerCase()}?`;
+    return `What is your ${formattedLabel}?`;
   }
 }
 

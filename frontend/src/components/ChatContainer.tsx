@@ -6,10 +6,11 @@ import ChatInput from './ChatInput';
 interface ChatContainerProps {
   messages: Message[];
   onSendMessage: (content: string) => void;
+  onFileUpload: (file: File) => void;
   isLoading: boolean;
 }
 
-function ChatContainer({ messages, onSendMessage, isLoading }: ChatContainerProps) {
+function ChatContainer({ messages, onSendMessage, onFileUpload, isLoading }: ChatContainerProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -61,7 +62,7 @@ function ChatContainer({ messages, onSendMessage, isLoading }: ChatContainerProp
       </div>
 
       {/* Input */}
-      <ChatInput onSendMessage={onSendMessage} isLoading={isLoading} />
+      <ChatInput onSendMessage={onSendMessage} onFileUpload={onFileUpload} isLoading={isLoading} />
     </div>
   );
 }

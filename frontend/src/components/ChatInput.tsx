@@ -1,13 +1,15 @@
-import { useState, KeyboardEvent } from 'react';
-import { Send } from 'lucide-react';
+import { useState, KeyboardEvent, useRef } from 'react';
+import { Send, Paperclip } from 'lucide-react';
 
 interface ChatInputProps {
   onSendMessage: (content: string) => void;
+  onFileUpload: (file: File) => void;
   isLoading: boolean;
 }
 
-function ChatInput({ onSendMessage, isLoading }: ChatInputProps) {
+function ChatInput({ onSendMessage, onFileUpload, isLoading }: ChatInputProps) {
   const [input, setInput] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = () => {
     if (input.trim() && !isLoading) {
@@ -23,9 +25,41 @@ function ChatInput({ onSendMessage, isLoading }: ChatInputProps) {
     }
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type === 'application/pdf') {
+      onFileUpload(file);
+    } else if (file) {
+      alert('Please select a PDF file');
+    }
+    // Reset input so the same file can be selected again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleAttachClick = () => {
+    fileInputRef.current?.click();
+  };
+
   return (
     <div className="border-t border-gray-200 px-6 py-4 bg-white">
       <div className="flex items-end space-x-3">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+        <button
+          onClick={handleAttachClick}
+          disabled={isLoading}
+          className="btn-secondary flex items-center justify-center p-3"
+          title="Upload PDF"
+        >
+          <Paperclip size={20} />
+        </button>
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
